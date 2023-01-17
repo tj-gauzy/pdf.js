@@ -141,6 +141,11 @@ class PDFThumbnailView {
     ring.style.height = this.canvasHeight + borderAdjustment + "px";
     this.ring = ring;
 
+    const indicator = document.createElement("span");
+    indicator.classList.add("page-indicator");
+    indicator.textContent = this.id;
+    div.append(indicator);
+
     div.append(ring);
     anchor.append(div);
     container.append(anchor);
