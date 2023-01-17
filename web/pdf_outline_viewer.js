@@ -66,6 +66,8 @@ class PDFOutlineViewer extends BaseTreeViewer {
     this.eventBus._on("sidebarviewchanged", evt => {
       this._sidebarView = evt.view;
     });
+
+    this._bindAutoFocus();
   }
 
   reset() {
@@ -152,6 +154,7 @@ class PDFOutlineViewer extends BaseTreeViewer {
 
     element.href = linkService.getDestinationHash(dest);
     element.onclick = evt => {
+      this.eventBus.dispatch("outlinenavigated", { element, dest });
       this._updateCurrentTreeItem(evt.target.parentNode);
 
       if (dest) {
@@ -370,6 +373,45 @@ class PDFOutlineViewer extends BaseTreeViewer {
       pageNumberToDestHash.size > 0 ? pageNumberToDestHash : null
     );
     return this._pageNumberToDestHashCapability.promise;
+  }
+
+  /**
+   * @private When the outline is visible, automatically scroll to the current
+   */
+  _bindAutoFocus() {
+    let timer = null;
+    const autoFocusOutline = () => {
+      if (timer === false) {
+        setTimeout(() => {
+          timer = null;
+        }, 800);
+        return;
+      }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+
+      timer = setTimeout(() => {
+        timer = null;
+        if (this._isPagesLoaded) {
+          this.eventBus.dispatch("currentoutlineitem");
+        } else {
+          autoFocusOutline();
+        }
+      }, 100);
+    };
+    this.eventBus._on("sidebarviewchanged", evt => {
+      if (evt.view === SidebarView.OUTLINE) {
+        this.eventBus._on("updateviewarea", autoFocusOutline);
+        autoFocusOutline();
+      } else {
+        this.eventBus._off("updateviewarea", autoFocusOutline);
+      }
+    });
+    this.eventBus._on("outlinenavigated", () => {
+      timer = false;
+    });
   }
 }
 
