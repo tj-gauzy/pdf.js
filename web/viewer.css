@@ -20,6 +20,7 @@
   --sidebar-width: 200px;
   --sidebar-transition-duration: 200ms;
   --sidebar-transition-timing-function: ease;
+  --sidebar-resizer-color: rgb(131 129 119);
   --scale-select-width: 140px;
 
   --toolbar-icon-opacity: 0.7;
@@ -348,8 +349,8 @@ body {
   position: absolute;
   top: 0;
   bottom: 0;
-  inset-inline-end: -6px;
-  width: 6px;
+  inset-inline-end: -4px;
+  width: 4px;
   z-index: 200;
   cursor: ew-resize;
 }
@@ -435,6 +436,9 @@ body {
 #outerContainer.sidebarResizing #loadingBar {
   /* Improve responsiveness and avoid visual glitches when the sidebar is resized. */
   transition-duration: 0s;
+}
+#outerContainer.sidebarResizing #sidebarResizer {
+  background-color: var(--sidebar-resizer-color);
 }
 
 .findbar,
@@ -1156,7 +1160,8 @@ a.secondaryToolbarButton[href="#"] {
   user-select: none;
 }
 #thumbnailView {
-  width: calc(100% - 60px);
+  overflow-x: hidden;
+  width: calc(100% - 61px);
   padding: 10px 30px 0;
 }
 

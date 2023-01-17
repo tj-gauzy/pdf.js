@@ -61,7 +61,7 @@ class PDFSidebarResizer {
    * @private
    * returns {boolean} Indicating if the sidebar width was updated.
    */
-  _updateWidth(width = 0) {
+  _updateWidth(width = 0, simulate = false) {
     // Prevent the sidebar from becoming too narrow, or from occupying more
     // than half of the available viewer width.
     const maxWidth = Math.floor(this.outerContainerWidth / 2);
@@ -71,6 +71,12 @@ class PDFSidebarResizer {
     if (width < SIDEBAR_MIN_WIDTH) {
       width = SIDEBAR_MIN_WIDTH;
     }
+    if (simulate) {
+      const translate = (this.isRTL ? -1 : 1) * (width - this._init_width);
+      this.resizer.style = `transform: translateX(${translate}px);`;
+      return true;
+    }
+
     // Only update the UI when the sidebar width did in fact change.
     if (width === this._width) {
       return false;
@@ -85,18 +91,29 @@ class PDFSidebarResizer {
    * @private
    */
   _mouseMove(evt) {
-    let width = evt.clientX;
+    evt.preventDefault();
+    evt.stopPropagation();
+    let width = evt.clientX - this._init_left;
+    if (!this._init_width) {
+      this._init_width = width;
+    }
     // For sidebar resizing to work correctly in RTL mode, invert the width.
     if (this.isRTL) {
       width = this.outerContainerWidth - width;
     }
-    this._updateWidth(width);
+    this._updateWidth(width, true);
+    this._latest_width = width;
   }
 
   /**
    * @private
    */
   _mouseUp(evt) {
+    evt.preventDefault();
+    evt.stopPropagation();
+    this._updateWidth(this._latest_width);
+    this._init_width = null;
+    this._latest_width = null;
     // Re-enable the `transition-duration` rules when sidebar resizing ends...
     this.outerContainer.classList.remove(SIDEBAR_RESIZING_CLASS);
     // ... and ensure that rendering will always be triggered.
@@ -105,6 +122,10 @@ class PDFSidebarResizer {
     const _boundEvents = this._boundEvents;
     window.removeEventListener("mousemove", _boundEvents.mouseMove);
     window.removeEventListener("mouseup", _boundEvents.mouseUp);
+
+    requestAnimationFrame(() => {
+      this.resizer.style = "";
+    });
   }
 
   /**
@@ -119,6 +140,10 @@ class PDFSidebarResizer {
       if (evt.button !== 0) {
         return;
       }
+      evt.preventDefault();
+      evt.stopPropagation();
+      this._init_left = this.outerContainer.getBoundingClientRect().left;
+
       // Disable the `transition-duration` rules when sidebar resizing begins,
       // in order to improve responsiveness and to avoid visual glitches.
       this.outerContainer.classList.add(SIDEBAR_RESIZING_CLASS);
