@@ -657,8 +657,19 @@ function setLayerDimensions(
     //   `round(down, var(--scale-factor) * ${pageWidth}px, 1px)`;
     // const heightStr =
     //   `round(down, var(--scale-factor) * ${pageHeight}px, 1px)`;
-    const widthStr = `calc(var(--scale-factor) * ${pageWidth}px)`;
-    const heightStr = `calc(var(--scale-factor) * ${pageHeight}px)`;
+    let widthStr = `calc(var(--scale-factor) * ${pageWidth}px)`;
+    let heightStr = `calc(var(--scale-factor) * ${pageHeight}px)`;
+
+    if (div.classList.contains("textLayer")) {
+      // make the text layer rendered at 10x the normal scale,
+      // to improve text selection precision.
+      // the text position will match with -
+      // canvas better for small fonts or zoomedOut.
+      widthStr = `calc(var(--scale-factor) * 10 * ${pageWidth}px)`;
+      heightStr = `calc(var(--scale-factor) * 10 * ${pageHeight}px)`;
+      style.transformOrigin = "0% 0%";
+      style.transform = "scale(0.1)";
+    }
 
     if (!mustFlip || viewport.rotation % 180 === 0) {
       style.width = widthStr;

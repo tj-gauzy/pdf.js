@@ -185,7 +185,8 @@ function appendText(task, geom, styles) {
     top = tx[5] - fontAscent * Math.cos(angle);
   }
 
-  const scaleFactorStr = "calc(var(--scale-factor)*";
+  // scale text spans by 10, to make small fonts match the canvas text
+  const scaleFactorStr = "calc(var(--scale-factor)*10*";
   const divStyle = textDiv.style;
   // Setting the style properties individually, rather than all at once,
   // should be OK since the `textDiv` isn't appended to the document yet.
