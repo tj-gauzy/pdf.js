@@ -149,8 +149,19 @@ class EventBus {
    * @ignore
    */
   _off(eventName, listener, options = null) {
+    if (eventName === true) {
+      // Support remove all events
+      this.#listeners = Object.create(null);
+      return;
+    }
     const eventListeners = this.#listeners[eventName];
     if (!eventListeners) {
+      return;
+    }
+
+    if (listener === true) {
+      // Support remove all listeners of specified eventName
+      delete this.#listeners[eventName];
       return;
     }
     for (let i = 0, ii = eventListeners.length; i < ii; i++) {
