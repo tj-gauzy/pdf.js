@@ -53,11 +53,9 @@ function addLinkAttributes(link, { url, target, rel, enabled = true } = {}) {
   if (enabled) {
     link.href = link.title = urlNullRemoved;
   } else {
-    link.href = "";
-    link.title = `Disabled: ${urlNullRemoved}`;
-    link.onclick = () => {
-      return false;
-    };
+    link.href = "javascript:;";
+    link.title = `${urlNullRemoved}`;
+    link.dataset.href = url;
   }
 
   let targetStr = ""; // LinkTarget.NONE
@@ -111,11 +109,12 @@ class PDFLinkService {
     externalLinkTarget = null,
     externalLinkRel = null,
     ignoreDestinationZoom = false,
+    externalLinkEnabled = true,
   } = {}) {
     this.eventBus = eventBus;
     this.externalLinkTarget = externalLinkTarget;
     this.externalLinkRel = externalLinkRel;
-    this.externalLinkEnabled = true;
+    this.externalLinkEnabled = externalLinkEnabled;
     this._ignoreDestinationZoom = ignoreDestinationZoom;
 
     this.baseUrl = null;
@@ -302,13 +301,26 @@ class PDFLinkService {
    * @param {string} url
    * @param {boolean} [newWindow]
    */
-  addLinkAttributes(link, url, newWindow = false) {
+  addLinkAttributes(link, url, newWindow = true) {
     addLinkAttributes(link, {
       url,
       target: newWindow ? LinkTarget.BLANK : this.externalLinkTarget,
       rel: this.externalLinkRel,
       enabled: this.externalLinkEnabled,
     });
+
+    if (this.externalLinkEnabled) {
+      return;
+    }
+
+    link.onclick = e => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.eventBus.dispatch("externallinkclick", {
+        source: link,
+        url,
+      });
+    };
   }
 
   /**
