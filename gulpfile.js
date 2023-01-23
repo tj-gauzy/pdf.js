@@ -984,7 +984,7 @@ function buildComponents(defines, dir) {
   rimraf.sync(dir);
 
   const COMPONENTS_IMAGES = [
-    "web/images/annotation-*.svg",
+    "web/images/*-*.svg",
     "web/images/loading-icon.gif",
   ];
 
@@ -2074,6 +2074,7 @@ gulp.task(
 
       const WebServer = require("./test/webserver.js").WebServer;
       const server = new WebServer();
+      server.host = "0.0.0.0";
       server.port = 8888;
       server.start();
     }
@@ -2394,6 +2395,76 @@ gulp.task(
     done();
   })
 );
+
+gulp.task(
+  "pre-reader",
+  gulp.series("lib", "minified", function createDist() {
+    console.log();
+    console.log("### Cloning baseline distribution");
+
+    rimraf.sync(DIST_DIR);
+    mkdirp.sync(DIST_DIR);
+
+    console.log();
+    console.log("### Overwriting all files");
+    rimraf.sync(DIST_DIR);
+
+    return merge([
+      packageJson().pipe(gulp.dest(DIST_DIR)),
+      vfs
+        .src("external/dist/**/*", { base: "external/dist", stripBOM: false })
+        .pipe(gulp.dest(DIST_DIR)),
+      gulp.src("external/bcmaps/*.bcmap").pipe(gulp.dest(DIST_DIR + "cmaps/")),
+      gulp
+        .src("external/standard_fonts/*.pfb")
+        .pipe(gulp.dest(DIST_DIR + "standard_fonts/")),
+      gulp
+        .src(LIB_DIR + "**/*", { base: LIB_DIR })
+        .pipe(gulp.dest(DIST_DIR + "lib/")),
+      gulp
+        .src(MINIFIED_DIR + "build/pdf.worker.js")
+        .pipe(rename("pdf.worker.min.js"))
+        .pipe(gulp.dest(DIST_DIR + "build/")),
+      gulp
+        .src(MINIFIED_DIR + "build/pdf.sandbox.js")
+        .pipe(rename("pdf.sandbox.min.js"))
+        .pipe(gulp.dest(DIST_DIR + "build/")),
+      gulp
+        .src(MINIFIED_DIR + "web/viewer.css")
+        .pipe(gulp.dest(DIST_DIR + "web/")),
+      gulp
+        .src("web/locale/**/*")
+        .pipe(gulp.dest(DIST_DIR + "web/locale/")),
+      gulp
+        .src("web/images/**/*")
+        .pipe(gulp.dest(DIST_DIR + "web/images/")),
+    ]);
+  })
+);
+
+gulp.task("update-reader", () => {
+  console.log();
+  console.log("### Updating pdfjs lib files");
+
+  return merge([
+    buildLib(
+      builder.merge(DEFINES, { GENERIC: true, LIB: true }),
+      "build/lib/"
+    ),
+    preprocessCSS("web/viewer.css", builder.merge(DEFINES, { GENERIC: true }))
+      .pipe(
+        postcss([
+          postcssLogical({ preserve: true }),
+          postcssDirPseudoClass(),
+          autoprefixer(AUTOPREFIXER_CONFIG),
+        ])
+      )
+      .pipe(gulp.dest(DIST_DIR + "web")),
+    gulp
+      .src(LIB_DIR + "**/*", { base: LIB_DIR })
+      .pipe(gulp.dest(DIST_DIR + "lib/")),
+  ]);
+});
 
 gulp.task(
   "mozcentralbaseline",
