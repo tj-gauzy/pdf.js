@@ -1749,6 +1749,9 @@ if (
       return this.tgrp;
     }
   };
+
+  // Expose the `convertImgDataToPng` function on the `SVGGraphics` class.
+  SVGGraphics.convertImgDataToPng = convertImgDataToPng;
 }
 
 export { SVGGraphics };
