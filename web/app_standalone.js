@@ -1,7 +1,16 @@
-import { PDFViewerApplication, setActiveAppInstance } from "./app.js";
-import { PDFViewer } from "./pdf_viewer.js";
+import {
+  DefaultExternalServices,
+  PDFViewerApplication,
+  setActiveAppInstance,
+} from "./app.js";
+import { GenericL10n, setL10n } from "./genericl10n.js";
 import { AppOption } from "./app_options_standalone.js";
-import { setL10n } from "./genericl10n.js";
+import { BasePreferences } from "./preferences.js";
+import { DownloadManager } from "./download_manager.js";
+import { GenericScripting } from "./generic_scripting.js";
+import { PDFViewer } from "./pdf_viewer.js";
+
+// #region PDFAPP
 
 /**
  * Create a functional class that extends PDFViewerApplication
@@ -143,6 +152,8 @@ App.prototype.setDocStyle = function (style) {
   }
   PDFViewer.setDocStyle(style);
 };
+
+// #endregion
 
 /**
  * Generate an app config object
@@ -315,6 +326,52 @@ function genAppConfig(document, overrides = {}) {
   return config;
 }
 
-export { App, genAppConfig };
+class GenericPreferences extends BasePreferences {
+  async _writeToStorage(prefObj) {
+    localStorage.setItem("pdfjs.preferences", JSON.stringify(prefObj));
+  }
+
+  async _readFromStorage(prefObj) {
+    return JSON.parse(localStorage.getItem("pdfjs.preferences"));
+  }
+}
+
+const defaultServices = {
+  DownloadManager,
+  GenericPreferences,
+  GenericL10n,
+  GenericScripting,
+};
+
+/**
+ * Create a new ExternalServices class with the given overrides
+ * @param {{}} overrides
+ * @returns DefaultExternalServices
+ */
+function genExternalServices(overrides = {}) {
+  const services = Object.assign({}, defaultServices, overrides);
+
+  class ExternalServices extends DefaultExternalServices {
+    static createDownloadManager(options) {
+      return new services.DownloadManager();
+    }
+
+    static createPreferences() {
+      return new services.GenericPreferences();
+    }
+
+    static createL10n({ locale = "zh-CN" }) {
+      return new services.GenericL10n(locale);
+    }
+
+    static createScripting({ sandboxBundleSrc }) {
+      return new services.GenericScripting(sandboxBundleSrc);
+    }
+  }
+
+  return ExternalServices;
+}
+
+export { App, genAppConfig, genExternalServices };
 
 export default App;
