@@ -411,6 +411,20 @@ class TextLayerRenderTask {
       br.setAttribute("role", "presentation");
       this._container.append(br);
     }
+
+    // Try to fill long space gaps between words
+    if (this._prevTextDiv) {
+      const currentLeft = textDiv.style.left;
+      const prevLeft = this._prevTextDiv.style.left;
+
+      if (
+        parseFloat(prevLeft.replace(/(px|%)/gi, "")) <
+        parseFloat(currentLeft.replace(/(px|%)/gi, ""))
+      ) {
+        this._prevTextDiv.style.minWidth = `calc(${currentLeft} - ${prevLeft})`;
+      }
+    }
+    this._prevTextDiv = textDiv;
   }
 
   /**

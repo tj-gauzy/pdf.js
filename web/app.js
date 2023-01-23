@@ -1931,6 +1931,43 @@ const PDFViewerApplication = {
     window.addEventListener("click", webViewerClick);
     window.addEventListener("keydown", webViewerKeyDown);
     window.addEventListener("keyup", webViewerKeyUp);
+
+    // Try to fix selection jumping in text line gap.
+    // When user start to select, make text lines 2x line height.
+    const isSelectionValid = () => {
+      const selection = (
+        this.appConfig.selectionSource || _window
+      ).getSelection();
+
+      if (
+        !selection ||
+        selection.rangeCount === 0 ||
+        selection.getRangeAt(0).toString().length === 0
+      ) {
+        return false;
+      }
+      return true;
+    };
+    let selectEndTimer = null;
+    _boundEvents.selectStart = event => {
+      if (selectEndTimer) {
+        return;
+      }
+      this.appConfig.viewerContainer.classList.add("selecting");
+      selectEndTimer = setInterval(() => {
+        if (isSelectionValid()) {
+          return;
+        }
+        requestAnimationFrame(() => {
+          clearInterval(selectEndTimer);
+          selectEndTimer = null;
+          this.appConfig.viewerContainer.classList.remove("selecting");
+        });
+      }, 3000);
+    };
+    window.addEventListener("selectstart", _boundEvents.selectStart);
+
+    window = _window;
     window.addEventListener("resize", _boundEvents.windowResize);
     window.addEventListener("hashchange", _boundEvents.windowHashChange);
     window.addEventListener("beforeprint", _boundEvents.windowBeforePrint);
@@ -2020,6 +2057,9 @@ const PDFViewerApplication = {
     window.removeEventListener("click", webViewerClick);
     window.removeEventListener("keydown", webViewerKeyDown);
     window.removeEventListener("keyup", webViewerKeyUp);
+    window.removeEventListener("selectstart", _boundEvents.selectStart);
+
+    window = _window;
     window.removeEventListener("resize", _boundEvents.windowResize);
     window.removeEventListener("hashchange", _boundEvents.windowHashChange);
     window.removeEventListener("beforeprint", _boundEvents.windowBeforePrint);
@@ -2035,6 +2075,7 @@ const PDFViewerApplication = {
     _boundEvents.windowBeforePrint = null;
     _boundEvents.windowAfterPrint = null;
     _boundEvents.windowUpdateFromSandbox = null;
+    _boundEvents.selectStart = null;
   },
 
   _accumulateTicks(ticks, prop) {
