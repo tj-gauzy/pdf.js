@@ -94,9 +94,6 @@ class PDFSidebarResizer {
     evt.preventDefault();
     evt.stopPropagation();
     let width = evt.clientX - this._init_left;
-    if (!this._init_width) {
-      this._init_width = width;
-    }
     // For sidebar resizing to work correctly in RTL mode, invert the width.
     if (this.isRTL) {
       width = this.outerContainerWidth - width;
@@ -142,7 +139,9 @@ class PDFSidebarResizer {
       }
       evt.preventDefault();
       evt.stopPropagation();
+      // TODO: fix compatilibity for right-to-left languages.
       this._init_left = this.outerContainer.getBoundingClientRect().left;
+      this._latest_width = this._init_width = evt.clientX - this._init_left;
 
       // Disable the `transition-duration` rules when sidebar resizing begins,
       // in order to improve responsiveness and to avoid visual glitches.
