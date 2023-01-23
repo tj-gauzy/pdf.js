@@ -679,7 +679,7 @@ const animationStarted = new Promise(function (resolve) {
   window.requestAnimationFrame(resolve);
 });
 
-const docStyle =
+let docStyle =
   typeof PDFJSDev !== "undefined" &&
   PDFJSDev.test("LIB") &&
   typeof document === "undefined"
@@ -839,6 +839,16 @@ function apiPageModeToSidebarView(mode) {
   return SidebarView.NONE; // Default value.
 }
 
+/**
+ * add support for multiple instances of pdf.js on the same page
+ * set docStyle targets for difference pdf.js instance
+ * @param {Style} style style for a certain element
+ * @returns void
+ */
+function setDocStyle(style) {
+  docStyle = style;
+}
+
 export {
   animationStarted,
   apiPageLayoutToViewerModes,
@@ -875,6 +885,7 @@ export {
   SCROLLBAR_PADDING,
   scrollIntoView,
   ScrollMode,
+  setDocStyle,
   SidebarView,
   SpreadMode,
   TextLayerMode,

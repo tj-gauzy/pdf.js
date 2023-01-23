@@ -1,3 +1,4 @@
+/* eslint-disable */
 /* Copyright 2012 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -52,7 +53,7 @@ import {
   UnexpectedResponseException,
   version,
 } from "pdfjs-lib";
-import { AppOptions, OptionKind } from "./app_options.js";
+import { AppOptions as AppOptionsOrigin, OptionKind } from "./app_options.js";
 import { AutomationEventBus, EventBus } from "./event_utils.js";
 import { CursorTool, PDFCursorTools } from "./pdf_cursor_tools.js";
 import { LinkTarget, PDFLinkService } from "./pdf_link_service.js";
@@ -76,6 +77,9 @@ import { PDFViewer } from "./pdf_viewer.js";
 import { SecondaryToolbar } from "./secondary_toolbar.js";
 import { Toolbar } from "./toolbar.js";
 import { ViewHistory } from "./view_history.js";
+
+const _window = window;
+let AppOptions = AppOptionsOrigin;
 
 const FORCE_PAGES_LOADED_TIMEOUT = 10000; // ms
 const WHEEL_ZOOM_DISABLED_TIMEOUT = 1000; // ms
@@ -149,7 +153,7 @@ class DefaultExternalServices {
   }
 }
 
-const PDFViewerApplication = {
+let PDFViewerApplication = {
   initialBookmark: document.location.hash.substring(1),
   _initializedCapability: createPromiseCapability(),
   appConfig: null,
@@ -228,8 +232,12 @@ const PDFViewerApplication = {
 
   // Called once when the document is loaded.
   async initialize(appConfig) {
+    if (appConfig) {
+      this.appConfig = appConfig;
+    } else {
+      appConfig = this.appConfig;
+    }
     this.preferences = this.externalServices.createPreferences();
-    this.appConfig = appConfig;
 
     await this._readPreferences();
     await this._parseHashParameters();
@@ -385,7 +393,10 @@ const PDFViewerApplication = {
         : null
     );
     const dir = await this.l10n.getDirection();
-    document.getElementsByTagName("html")[0].dir = dir;
+    const documentRootElement =
+      this.appConfig.documentRootElement ||
+      document.getElementsByTagName("html")[0];
+    documentRootElement.dir = dir;
   },
 
   /**
@@ -451,6 +462,7 @@ const PDFViewerApplication = {
       externalLinkTarget: AppOptions.get("externalLinkTarget"),
       externalLinkRel: AppOptions.get("externalLinkRel"),
       ignoreDestinationZoom: AppOptions.get("ignoreDestinationZoom"),
+      externalLinkEnabled: AppOptions.get("externalLinkEnabled") !== false,
     });
     this.pdfLinkService = pdfLinkService;
 
@@ -723,7 +735,8 @@ const PDFViewerApplication = {
   },
 
   get loadingBar() {
-    const barElement = document.getElementById("loadingBar");
+    const barElement =
+      this.progressBar || document.getElementById("loadingBar");
     const bar = barElement ? new ProgressBar(barElement) : null;
     return shadow(this, "loadingBar", bar);
   },
@@ -847,7 +860,7 @@ const PDFViewerApplication = {
     }
     const promises = [];
 
-    promises.push(this.pdfLoadingTask.destroy());
+    promises.push(this.pdfLoadingTask?.destroy());
     this.pdfLoadingTask = null;
 
     if (this.pdfDocument) {
@@ -1872,6 +1885,7 @@ const PDFViewerApplication = {
   },
 
   bindWindowEvents() {
+    let window = _window;
     const { eventBus, _boundEvents } = this;
 
     function addWindowResolutionChange(evt = null) {
@@ -1917,6 +1931,7 @@ const PDFViewerApplication = {
       });
     };
 
+    window = this.appConfig.eventDelegate || window;
     window.addEventListener("visibilitychange", webViewerVisibilityChange);
     window.addEventListener("wheel", webViewerWheel, { passive: false });
     window.addEventListener("touchstart", webViewerTouchStart, {
@@ -2042,6 +2057,8 @@ const PDFViewerApplication = {
       throw new Error("Not implemented: unbindWindowEvents");
     }
     const { _boundEvents } = this;
+
+    let window = this.appConfig.eventDelegate || _window;
 
     window.removeEventListener("visibilitychange", webViewerVisibilityChange);
     window.removeEventListener("wheel", webViewerWheel, { passive: false });
@@ -2181,13 +2198,7 @@ async function loadFakeWorker() {
 }
 
 async function loadPDFBug(self) {
-  const { debuggerScriptPath } = self.appConfig;
-  const { PDFBug } =
-    typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")
-      ? await import(debuggerScriptPath) // eslint-disable-line no-unsanitized/method
-      : await __non_webpack_import__(debuggerScriptPath); // eslint-disable-line no-undef
-
-  self._PDFBug = PDFBug;
+  self._PDFBug = null;
 }
 
 function reportPageStatsPDFBug({ pageNumber }) {
@@ -3286,8 +3297,15 @@ const PDFPrintServiceFactory = {
   },
 };
 
+/* Support for multiple instances of the viewer on a single page. */
+const setActiveAppInstance = instance => {
+  PDFViewerApplication = instance;
+  AppOptions = instance.appOptions;
+};
+
 export {
   DefaultExternalServices,
   PDFPrintServiceFactory,
   PDFViewerApplication,
+  setActiveAppInstance,
 };

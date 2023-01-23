@@ -37,7 +37,7 @@ import {
   DEFAULT_SCALE,
   DEFAULT_SCALE_DELTA,
   DEFAULT_SCALE_VALUE,
-  docStyle,
+  docStyle as docStyleOrigin,
   getVisibleElements,
   isPortraitOrientation,
   isValidRotation,
@@ -52,6 +52,7 @@ import {
   SCROLLBAR_PADDING,
   scrollIntoView,
   ScrollMode,
+  setDocStyle,
   SpreadMode,
   TextLayerMode,
   UNKNOWN_SCALE,
@@ -63,6 +64,7 @@ import { PDFPageView } from "./pdf_page_view.js";
 import { PDFRenderingQueue } from "./pdf_rendering_queue.js";
 import { SimpleLinkService } from "./pdf_link_service.js";
 
+let docStyle = docStyleOrigin;
 const DEFAULT_CACHE_SIZE = 10;
 const ENABLE_PERMISSIONS_CLASS = "enablePermissions";
 
@@ -2152,6 +2154,11 @@ class PDFViewer {
     if (!noUpdate) {
       this.update();
     }
+  }
+
+  static setDocStyle(style) {
+    docStyle = style;
+    setDocStyle(docStyle);
   }
 }
 

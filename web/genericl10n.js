@@ -18,7 +18,7 @@
 import "../external/webL10n/l10n.js";
 import { fixupLangCode, getL10nFallback } from "./l10n_utils.js";
 
-const webL10n = document.webL10n;
+let webL10n = document.webL10n;
 
 /**
  * @implements {IL10n}
@@ -54,4 +54,8 @@ class GenericL10n {
   }
 }
 
-export { GenericL10n };
+const setL10n = l10n => {
+  webL10n = l10n;
+};
+
+export { GenericL10n, setL10n };

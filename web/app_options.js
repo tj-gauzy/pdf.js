@@ -413,4 +413,4 @@ class AppOptions {
   }
 }
 
-export { AppOptions, compatibilityParams, OptionKind };
+export { AppOptions, compatibilityParams, defaultOptions, OptionKind };
