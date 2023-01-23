@@ -326,7 +326,7 @@ class AnnotationElement {
         });
       },
       focus: event => {
-        setTimeout(() => event.target.focus({ preventScroll: false }), 0);
+        setTimeout(() => event.target?.focus({ preventScroll: false }), 0);
       },
       userName: event => {
         // tooltip

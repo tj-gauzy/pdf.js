@@ -743,7 +743,7 @@ class PDFPageView {
     if (this.viewport !== originalViewport) {
       // The canvas may have been originally rotated; rotate relative to that.
       const relativeRotation =
-        this.viewport.rotation - originalViewport.rotation;
+        this.viewport.rotation - (originalViewport?.rotation || 0);
       const absRotation = Math.abs(relativeRotation);
       let scaleX = 1,
         scaleY = 1;
