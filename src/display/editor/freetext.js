@@ -83,7 +83,12 @@ class FreeTextEditor extends AnnotationEditor {
       )
     );
 
-    const style = getComputedStyle(document.documentElement);
+    // Support for web component reader app.
+    let documentElement = document.documentElement;
+    if (window.ACTIVE_PDF_APP) {
+      documentElement = window.ACTIVE_PDF_APP().appConfig.appContainer;
+    }
+    const style = getComputedStyle(documentElement);
 
     if (
       typeof PDFJSDev === "undefined" ||

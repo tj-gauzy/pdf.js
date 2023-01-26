@@ -3315,7 +3315,14 @@ const setActiveAppInstance = instance => {
   AppOptions = instance.appOptions;
 };
 
+/* Get current active PDF viewer instance */
+const APP = () => {
+  return PDFViewerApplication;
+};
+window.ACTIVE_PDF_APP = APP;
+
 export {
+  APP,
   DefaultExternalServices,
   PDFPrintServiceFactory,
   PDFViewerApplication,
