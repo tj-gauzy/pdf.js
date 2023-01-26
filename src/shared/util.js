@@ -13,12 +13,8 @@
  * limitations under the License.
  */
 
-// Skip compatibility checks for modern builds and if we already ran the module.
-if (
-  typeof PDFJSDev !== "undefined" &&
-  !PDFJSDev.test("SKIP_BABEL") &&
-  !globalThis._pdfjsCompatibilityChecked
-) {
+// Skip compatibility checks if we already ran the module.
+if (!globalThis._pdfjsCompatibilityChecked) {
   globalThis._pdfjsCompatibilityChecked = true;
   require("./compatibility.js");
 }
