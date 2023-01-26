@@ -622,17 +622,16 @@ function normalizeWheelEventDirection(evt) {
 }
 
 function normalizeWheelEventDelta(evt) {
+  const deltaMode = evt.deltaMode; // Avoid being affected by bug 1392460.
   let delta = normalizeWheelEventDirection(evt);
 
-  const MOUSE_DOM_DELTA_PIXEL_MODE = 0;
-  const MOUSE_DOM_DELTA_LINE_MODE = 1;
   const MOUSE_PIXELS_PER_LINE = 30;
   const MOUSE_LINES_PER_PAGE = 30;
 
   // Converts delta to per-page units
-  if (evt.deltaMode === MOUSE_DOM_DELTA_PIXEL_MODE) {
+  if (deltaMode === WheelEvent.DOM_DELTA_PIXEL) {
     delta /= MOUSE_PIXELS_PER_LINE * MOUSE_LINES_PER_PAGE;
-  } else if (evt.deltaMode === MOUSE_DOM_DELTA_LINE_MODE) {
+  } else if (deltaMode === WheelEvent.DOM_DELTA_LINE) {
     delta /= MOUSE_LINES_PER_PAGE;
   }
   return delta;
@@ -697,10 +696,13 @@ class ProgressBar {
 
   #percent = 0;
 
+  #style = null;
+
   #visible = true;
 
   constructor(bar) {
     this.#classList = bar.classList;
+    this.#style = bar.style;
   }
 
   get percent() {
@@ -716,7 +718,7 @@ class ProgressBar {
     }
     this.#classList.remove("indeterminate");
 
-    docStyle.setProperty("--progressBar-percent", `${this.#percent}%`);
+    this.#style.setProperty("--progressBar-percent", `${this.#percent}%`);
   }
 
   setWidth(viewer) {
@@ -726,7 +728,10 @@ class ProgressBar {
     const container = viewer.parentNode;
     const scrollbarWidth = container.offsetWidth - viewer.offsetWidth;
     if (scrollbarWidth > 0) {
-      docStyle.setProperty("--progressBar-end-offset", `${scrollbarWidth}px`);
+      this.#style.setProperty(
+        "--progressBar-end-offset",
+        `${scrollbarWidth}px`
+      );
     }
   }
 
