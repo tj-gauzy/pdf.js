@@ -125,6 +125,11 @@ class DefaultExternalServices {
     throw new Error("Not implemented: createScripting");
   }
 
+  static createViewHistory(options) {
+    const { fingerprint } = options;
+    return new ViewHistory(fingerprint);
+  }
+
   static get supportsPinchToZoom() {
     return shadow(this, "supportsPinchToZoom", true);
   }
@@ -1191,9 +1196,9 @@ let PDFViewerApplication = {
 
     this.pdfThumbnailViewer?.setDocument(pdfDocument);
 
-    const storedPromise = (this.store = new ViewHistory(
-      pdfDocument.fingerprints[0]
-    ))
+    const storedPromise = (this.store = this.externalServices.createViewHistory({
+      fingerprint: pdfDocument.fingerprints[0],
+    }))
       .getMultiple({
         page: null,
         zoom: DEFAULT_SCALE_VALUE,

@@ -9,6 +9,7 @@ import { BasePreferences } from "./preferences.js";
 import { DownloadManager } from "./download_manager.js";
 import { GenericScripting } from "./generic_scripting.js";
 import { PDFViewer } from "./pdf_viewer.js";
+import { ViewHistory } from "./view_history.js";
 
 // #region PDFAPP
 
@@ -341,6 +342,7 @@ const defaultServices = {
   GenericPreferences,
   GenericL10n,
   GenericScripting,
+  ViewHistory,
 };
 
 /**
@@ -366,6 +368,10 @@ function genExternalServices(overrides = {}) {
 
     static createScripting({ sandboxBundleSrc }) {
       return new services.GenericScripting(sandboxBundleSrc);
+    }
+
+    static createViewHistory({ fingerprint }) {
+      return new services.ViewHistory(fingerprint);
     }
   }
 
