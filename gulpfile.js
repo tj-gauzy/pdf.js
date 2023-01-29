@@ -26,7 +26,7 @@ const rename = require("gulp-rename");
 const replace = require("gulp-replace");
 const mkdirp = require("mkdirp");
 const path = require("path");
-const { rimraf } = require("rimraf");
+const rimraf = require("rimraf");
 const stream = require("stream");
 const exec = require("child_process").exec;
 const spawn = require("child_process").spawn;
@@ -2207,6 +2207,7 @@ function packageJson() {
       canvas: "^2.11.0",
     },
     dependencies: {
+      "path2d-polyfill": "^2.0.1",
       "web-streams-polyfill": "^3.2.1",
     },
     browser: {
