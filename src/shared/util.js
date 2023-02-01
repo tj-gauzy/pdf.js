@@ -14,7 +14,7 @@
  */
 
 // Skip compatibility checks if we already ran the module.
-if (!globalThis._pdfjsCompatibilityChecked) {
+if (typeof PDFJSDev !== "undefined" && !globalThis._pdfjsCompatibilityChecked) {
   globalThis._pdfjsCompatibilityChecked = true;
   require("./compatibility.js");
 }
