@@ -6,6 +6,7 @@ import {
 import { GenericL10n, setL10n } from "./genericl10n.js";
 import { AppOption } from "./app_options_standalone.js";
 import { BasePreferences } from "./preferences.js";
+import { createPromiseCapability } from "pdfjs-lib";
 import { DownloadManager } from "./download_manager.js";
 import { GenericScripting } from "./generic_scripting.js";
 import { PDFViewer } from "./pdf_viewer.js";
@@ -26,6 +27,7 @@ function App(config) {
     ...params
   } = config || {};
 
+  this._initializedCapability = createPromiseCapability();
   this.appConfig = appConfig;
   this.appOptions = new AppOption();
 
@@ -52,8 +54,7 @@ function App(config) {
   }
 
   App.INSTANCES[this.signature] = this;
-  setActiveAppInstance(this);
-  this.setDocStyle();
+  this.restore().then();
 }
 
 App.prototype = PDFViewerApplication;
@@ -62,7 +63,7 @@ App.prototype = PDFViewerApplication;
  * Activate the current pdfviewer instance
  * @returns {App} Returns the current pdfviewer instance
  */
-App.prototype.restore = function () {
+App.prototype.restore = async function () {
   if (this.isActive()) {
     return this;
   }
@@ -71,18 +72,26 @@ App.prototype.restore = function () {
   if (signature && App.INSTANCES[signature]) {
     App.INSTANCES[signature].freeze();
   }
-  App.ACTIVE_INSTANCE = this.signature;
 
-  this.bindEvents();
-  this.bindWindowEvents();
-  this.unbindAutoRestore();
+  // Activate Current instance
+  App.ACTIVE_INSTANCE = this.signature;
+  setActiveAppInstance(this);
   this.setDocStyle();
   this.appConfig.appContainer.focus();
 
-  /* Activate Current instance */
-  setActiveAppInstance(this);
+  // wait for pdfviewer to be initialized
+  if (!this.eventBus) {
+    await this.initializedPromise;
+  }
 
-  this.eventBus.dispatch("restored", {
+  // Rebinder events for current instance
+  if (!this._boundEvents.windowResize) {
+    this.bindEvents();
+    this.bindWindowEvents();
+  }
+
+  this.unbindAutoRestore();
+  this.eventBus.dispatch("pdfjs:restored", {
     instance: this,
   });
 
@@ -93,13 +102,20 @@ App.prototype.restore = function () {
  * freeze the current pdfviewer instance
  */
 App.prototype.freeze = function () {
-  this.unbindEvents();
-  this.unbindWindowEvents();
-  this.bindAutoRestore();
+  if (!this.isActive()) {
+    return;
+  }
+
+  // Unbind events for current instance
+  if (this._boundEvents.windowResize) {
+    this.unbindEvents();
+    this.unbindWindowEvents();
+  }
 
   App.ACTIVE_INSTANCE = null;
 
-  this.eventBus.dispatch("frozen", {
+  this.bindAutoRestore();
+  this.eventBus.dispatch("pdfjs:frozen", {
     instance: this,
   });
 };
