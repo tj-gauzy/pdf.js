@@ -1162,6 +1162,9 @@ a.secondaryToolbarButton[href="#"] {
   overflow: auto;
   user-select: none;
 }
+#outlineView {
+  --outline-level: 1;
+}
 #thumbnailView {
   overflow-x: hidden;
   width: calc(100% - 61px);

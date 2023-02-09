@@ -239,18 +239,26 @@ class PDFOutlineViewer extends BaseTreeViewer {
         this._bindLink(element, item);
         this._setStyles(element, item);
         element.textContent = this._normalizeTextContent(item.title);
+        element.setAttribute("title", item.title || "");
 
         div.append(element);
 
         if (item.items.length > 0) {
+          const currentLevel = item.level || 1;
           hasAnyNesting = true;
           this._addToggleButton(div, item);
 
           const itemsDiv = document.createElement("div");
           itemsDiv.className = "treeItems";
           div.append(itemsDiv);
+          div.style.setProperty("--outline-level", currentLevel + 1);
 
-          queue.push({ parent: itemsDiv, items: item.items });
+          const items = item.items;
+          items.forEach(subItem => {
+            subItem.level = currentLevel + 1;
+          });
+
+          queue.push({ parent: itemsDiv, items });
         }
 
         levelData.parent.append(div);
