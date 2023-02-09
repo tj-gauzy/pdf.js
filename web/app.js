@@ -451,10 +451,13 @@ let PDFViewerApplication = {
   async _initializeViewerComponents() {
     const { appConfig, externalServices } = this;
 
-    const eventBus = externalServices.isInAutomation
-      ? new AutomationEventBus()
-      : new EventBus();
-    this.eventBus = eventBus;
+    let eventBus = this.eventBus;
+    if (!eventBus) {
+      eventBus = externalServices.isInAutomation
+        ? new AutomationEventBus()
+        : new EventBus();
+      this.eventBus = eventBus;
+    }
 
     this.overlayManager = new OverlayManager();
 
@@ -1993,7 +1996,7 @@ let PDFViewerApplication = {
           selectEndTimer = null;
           this.appConfig.viewerContainer.classList.remove("selecting");
         });
-      }, 3000);
+      }, 800);
     };
     window.addEventListener("selectstart", _boundEvents.selectStart);
 
