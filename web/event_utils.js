@@ -171,6 +171,21 @@ class EventBus {
       }
     }
   }
+
+  /**
+   * Check if there are any listeners for a certain event.
+   * @param {string} eventName
+   */
+  hasListener(eventName) {
+    return this.#listeners && this.#listeners[eventName] && this.#listeners[eventName].length > 0;
+  }
+
+  /**
+   * Expose listeners data
+   */
+  getListeners() {
+    return this.#listeners;
+  }
 }
 
 /**
