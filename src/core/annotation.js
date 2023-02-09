@@ -1894,13 +1894,11 @@ class WidgetAnnotation extends Annotation {
       let newTransform = null;
       if (encrypt) {
         newTransform = encrypt.createCipherTransform(newRef.num, newRef.gen);
-        appearance = newTransform.encryptString(appearance);
       }
 
       const resources = this._getSaveFieldResources(xref);
       const appearanceStream = new StringStream(appearance);
       const appearanceDict = (appearanceStream.dict = new Dict(xref));
-      appearanceDict.set("Length", appearance.length);
       appearanceDict.set("Subtype", Name.get("Form"));
       appearanceDict.set("Resources", resources);
       appearanceDict.set("BBox", [
@@ -3513,8 +3511,8 @@ class FreeTextAnnotation extends MarkupAnnotation {
     const { xref } = params;
     this.data.annotationType = AnnotationType.FREETEXT;
     this.setDefaultAppearance(params);
-
     if (!this.appearance && this._isOffscreenCanvasSupported) {
+      const strokeAlpha = params.dict.get("CA");
       const fakeUnicodeFont = new FakeUnicodeFont(xref, "sans-serif");
       const fontData = this.data.defaultAppearanceData;
       this.appearance = fakeUnicodeFont.createAppearance(
@@ -3522,7 +3520,8 @@ class FreeTextAnnotation extends MarkupAnnotation {
         this.rectangle,
         this.rotation,
         fontData.fontSize || 10,
-        fontData.fontColor
+        fontData.fontColor,
+        strokeAlpha
       );
       this._streams.push(this.appearance, FakeUnicodeFont.toUnicodeStream);
     } else if (!this._isOffscreenCanvasSupported) {
@@ -3669,7 +3668,6 @@ class FreeTextAnnotation extends MarkupAnnotation {
     appearanceStreamDict.set("Subtype", Name.get("Form"));
     appearanceStreamDict.set("Type", Name.get("XObject"));
     appearanceStreamDict.set("BBox", [0, 0, w, h]);
-    appearanceStreamDict.set("Length", appearance.length);
     appearanceStreamDict.set("Resources", resources);
 
     if (rotation) {

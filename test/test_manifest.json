@@ -2235,6 +2235,12 @@
        "rounds": 1,
        "type": "eq"
     },
+    {  "id": "issue15977",
+       "file": "pdfs/issue15977_reduced.pdf",
+       "md5": "cd06accb3da81597ad11acffeb0b68fc",
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "issue5084",
        "file": "pdfs/issue5084.pdf",
        "md5": "a42a076ba90e20e3aae9af869eb4de45",
@@ -7325,6 +7331,30 @@
       "md5": "6e4fce8e36d960955a7476b862f58939",
       "rounds": 1,
       "link": true,
+      "type": "eq"
+   },
+   {
+      "id": "bug1815476-save-print",
+      "file": "pdfs/bug1815476.pdf",
+      "md5": "476f77da5f9422ef86ea5f4531602e93",
+      "rounds": 1,
+      "type": "eq",
+      "save": true,
+      "print": true,
+      "annotationStorage": {
+         "88R": {
+            "value": "foo"
+         },
+         "87R": {
+            "value": "bar"
+         }
+      }
+   },
+   {
+      "id": "issue16021",
+      "file": "pdfs/issue16021.pdf",
+      "md5": "78a12254cac90ba5219a4c5555ea35ed",
+      "rounds": 1,
       "type": "eq"
    }
 ]

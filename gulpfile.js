@@ -18,7 +18,6 @@
 
 const autoprefixer = require("autoprefixer");
 const postcssDirPseudoClass = require("postcss-dir-pseudo-class");
-const postcssLogical = require("postcss-logical");
 const fs = require("fs");
 const gulp = require("gulp");
 const postcss = require("gulp-postcss");
@@ -80,9 +79,9 @@ const config = JSON.parse(fs.readFileSync(CONFIG_FILE).toString());
 
 const ENV_TARGETS = [
   "last 2 versions",
-  "Chrome >= 85",
+  "Chrome >= 87",
   "Firefox ESR",
-  "Safari >= 14",
+  "Safari >= 14.1",
   "Node >= 14",
   "> 1%",
   "not IE > 0",
@@ -234,6 +233,50 @@ function createWebpackConfig(
   // Required to expose e.g., the `window` object.
   output.globalObject = "globalThis";
 
+  const basicAlias = {
+    pdfjs: "src",
+    "pdfjs-web": "web",
+    "pdfjs-lib": "web/pdfjs",
+    "pdfjs-fitCurve": "src/display/editor/fit_curve",
+  };
+  const viewerAlias = {
+    "web-annotation_editor_params": "web/annotation_editor_params.js",
+    "web-com": "",
+    "web-pdf_attachment_viewer": "web/pdf_attachment_viewer.js",
+    "web-pdf_cursor_tools": "web/pdf_cursor_tools.js",
+    "web-pdf_document_properties": "web/pdf_document_properties.js",
+    "web-pdf_find_bar": "web/pdf_find_bar.js",
+    "web-pdf_layer_viewer": "web/pdf_layer_viewer.js",
+    "web-pdf_outline_viewer": "web/pdf_outline_viewer.js",
+    "web-pdf_presentation_mode": "web/pdf_presentation_mode.js",
+    "web-pdf_sidebar": "web/pdf_sidebar.js",
+    "web-pdf_sidebar_resizer": "web/pdf_sidebar_resizer.js",
+    "web-pdf_thumbnail_viewer": "web/pdf_thumbnail_viewer.js",
+    "web-print_service": "",
+    "web-secondary_toolbar": "web/secondary_toolbar.js",
+    "web-toolbar": "web/toolbar.js",
+  };
+  if (bundleDefines.CHROME) {
+    viewerAlias["web-com"] = "web/chromecom.js";
+    viewerAlias["web-print_service"] = "web/pdf_print_service.js";
+  } else if (bundleDefines.GENERIC) {
+    viewerAlias["web-com"] = "web/genericcom.js";
+    viewerAlias["web-print_service"] = "web/pdf_print_service.js";
+  } else if (bundleDefines.MOZCENTRAL) {
+    if (bundleDefines.GECKOVIEW) {
+      for (const key in viewerAlias) {
+        viewerAlias[key] = "web/stubs-geckoview.js";
+      }
+    } else {
+      viewerAlias["web-print_service"] = "web/firefox_print_service.js";
+    }
+    viewerAlias["web-com"] = "web/firefoxcom.js";
+  }
+  const alias = { ...basicAlias, ...viewerAlias };
+  for (const key in alias) {
+    alias[key] = path.join(__dirname, alias[key]);
+  }
+
   return {
     mode: "none",
     experiments,
@@ -243,12 +286,7 @@ function createWebpackConfig(
     },
     plugins,
     resolve: {
-      alias: {
-        pdfjs: path.join(__dirname, "src"),
-        "pdfjs-web": path.join(__dirname, "web"),
-        "pdfjs-lib": path.join(__dirname, "web/pdfjs"),
-        "pdfjs-fitCurve": path.join(__dirname, "src/display/editor/fit_curve"),
-      },
+      alias,
     },
     devtool: enableSourceMaps ? "source-map" : undefined,
     module: {
@@ -912,11 +950,7 @@ function buildGeneric(defines, dir) {
     preprocessHTML("web/viewer.html", defines).pipe(gulp.dest(dir + "web")),
     preprocessCSS("web/viewer.css", defines)
       .pipe(
-        postcss([
-          postcssLogical({ preserve: true }),
-          postcssDirPseudoClass(),
-          autoprefixer(AUTOPREFIXER_CONFIG),
-        ])
+        postcss([postcssDirPseudoClass(), autoprefixer(AUTOPREFIXER_CONFIG)])
       )
       .pipe(gulp.dest(dir + "web")),
 
@@ -993,11 +1027,7 @@ function buildComponents(defines, dir) {
     gulp.src(COMPONENTS_IMAGES).pipe(gulp.dest(dir + "images")),
     preprocessCSS("web/pdf_viewer.css", defines)
       .pipe(
-        postcss([
-          postcssLogical({ preserve: true }),
-          postcssDirPseudoClass(),
-          autoprefixer(AUTOPREFIXER_CONFIG),
-        ])
+        postcss([postcssDirPseudoClass(), autoprefixer(AUTOPREFIXER_CONFIG)])
       )
       .pipe(gulp.dest(dir)),
   ]);
@@ -1089,11 +1119,7 @@ function buildMinified(defines, dir) {
     preprocessHTML("web/viewer.html", defines).pipe(gulp.dest(dir + "web")),
     preprocessCSS("web/viewer.css", defines)
       .pipe(
-        postcss([
-          postcssLogical({ preserve: true }),
-          postcssDirPseudoClass(),
-          autoprefixer(AUTOPREFIXER_CONFIG),
-        ])
+        postcss([postcssDirPseudoClass(), autoprefixer(AUTOPREFIXER_CONFIG)])
       )
       .pipe(gulp.dest(dir + "web")),
 
@@ -1435,9 +1461,8 @@ gulp.task(
         preprocessCSS("web/viewer.css", defines)
           .pipe(
             postcss([
-              postcssLogical({ preserve: true }),
               postcssDirPseudoClass(),
-              autoprefixer({ overrideBrowserslist: ["Chrome >= 85"] }),
+              autoprefixer({ overrideBrowserslist: ["Chrome >= 87"] }),
             ])
           )
           .pipe(gulp.dest(CHROME_BUILD_CONTENT_DIR + "web")),
@@ -1992,28 +2017,6 @@ gulp.task(
   )
 );
 
-gulp.task("dev-css", function createDevCSS() {
-  console.log();
-  console.log("### Building development CSS");
-
-  const defines = builder.merge(DEFINES, { GENERIC: true, TESTING: true });
-  const cssDir = BUILD_DIR + "dev-css/";
-
-  return merge([
-    gulp.src("web/images/*", { base: "web/" }).pipe(gulp.dest(cssDir)),
-
-    preprocessCSS("web/viewer.css", defines)
-      .pipe(
-        postcss([
-          postcssLogical({ preserve: true }),
-          postcssDirPseudoClass(),
-          autoprefixer({ overrideBrowserslist: ["last 1 versions"] }),
-        ])
-      )
-      .pipe(gulp.dest(cssDir)),
-  ]);
-});
-
 gulp.task(
   "dev-sandbox",
   gulp.series(
@@ -2042,13 +2045,6 @@ gulp.task(
 gulp.task(
   "server",
   gulp.parallel(
-    function watchDevCSS() {
-      gulp.watch(
-        ["web/*.css", "web/images/*"],
-        { ignoreInitial: false },
-        gulp.series("dev-css")
-      );
-    },
     function watchDevFitCurve() {
       gulp.watch(
         ["src/display/editor/*"],

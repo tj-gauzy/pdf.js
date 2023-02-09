@@ -46,6 +46,7 @@ import { AnnotationEditorLayerBuilder } from "./annotation_editor_layer_builder.
 import { AnnotationLayerBuilder } from "./annotation_layer_builder.js";
 import { compatibilityParams } from "./app_options.js";
 import { NullL10n } from "./l10n_utils.js";
+import { SimpleLinkService } from "./pdf_link_service.js";
 import { StructTreeLayerBuilder } from "./struct_tree_layer_builder.js";
 import { TextAccessibilityManager } from "./text_accessibility.js";
 import { TextHighlighter } from "./text_highlighter.js";
@@ -103,7 +104,6 @@ const DEFAULT_LAYER_PROPERTIES = () => {
     findController: null,
     hasJSActionsPromise: null,
     get linkService() {
-      const { SimpleLinkService } = require("./pdf_link_service.js");
       return new SimpleLinkService();
     },
   };
@@ -116,6 +116,8 @@ class PDFPageView {
   #annotationMode = AnnotationMode.ENABLE_FORMS;
 
   #layerProperties = null;
+
+  #loadingId = null;
 
   #previousRotation = null;
 
@@ -232,21 +234,34 @@ class PDFPageView {
   }
 
   set renderingState(state) {
+    if (state === this.#renderingState) {
+      return;
+    }
     this.#renderingState = state;
 
+    if (this.#loadingId) {
+      clearTimeout(this.#loadingId);
+      this.#loadingId = null;
+    }
+
     switch (state) {
-      case RenderingStates.INITIAL:
       case RenderingStates.PAUSED:
-        this.loadingIconDiv?.classList.add("notVisible");
+        this.div.classList.remove("loading");
         break;
       case RenderingStates.RUNNING:
-        this.loadingIconDiv?.classList.remove("notVisible");
+        this.div.classList.add("loadingIcon");
+        this.#loadingId = setTimeout(() => {
+          // Adding the loading class is slightly postponed in order to not have
+          // it with loadingIcon.
+          // If we don't do that the visibility of the background is changed but
+          // the transition isn't triggered.
+          this.div.classList.add("loading");
+          this.#loadingId = null;
+        }, 0);
         break;
+      case RenderingStates.INITIAL:
       case RenderingStates.FINISHED:
-        if (this.loadingIconDiv) {
-          this.loadingIconDiv.remove();
-          delete this.loadingIconDiv;
-        }
+        this.div.classList.remove("loadingIcon", "loading");
         break;
     }
   }
@@ -468,7 +483,6 @@ class PDFPageView {
         case annotationEditorLayerNode:
         case xfaLayerNode:
         case textLayerNode:
-        case this.loadingIconDiv:
           continue;
       }
       node.remove();
@@ -510,16 +524,6 @@ class PDFPageView {
     ) {
       this.paintedViewportMap.delete(this.svg);
       delete this.svg;
-    }
-
-    if (!this.loadingIconDiv) {
-      this.loadingIconDiv = document.createElement("div");
-      this.loadingIconDiv.className = "loadingIcon notVisible";
-      this.loadingIconDiv.setAttribute("role", "img");
-      this.l10n.get("loading").then(msg => {
-        this.loadingIconDiv?.setAttribute("aria-label", msg);
-      });
-      div.append(this.loadingIconDiv);
     }
   }
 
