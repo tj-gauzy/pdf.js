@@ -244,7 +244,7 @@ let PDFViewerApplication = {
     } else {
       appConfig = this.appConfig;
     }
-    this.preferences = this.externalServices.createPreferences();
+    this.preferences = this.externalServices.createPreferences({app: this});
 
     await this._readPreferences();
     await this._parseHashParameters();
@@ -481,7 +481,7 @@ let PDFViewerApplication = {
     });
     this.pdfLinkService = pdfLinkService;
 
-    const downloadManager = externalServices.createDownloadManager();
+    const downloadManager = externalServices.createDownloadManager({app: this});
     this.downloadManager = downloadManager;
 
     const findController = new PDFFindController({
@@ -1212,6 +1212,7 @@ let PDFViewerApplication = {
 
     const storedPromise = (this.store = this.externalServices.createViewHistory({
       fingerprint: pdfDocument.fingerprints[0],
+      app: this,
     }))
       .getMultiple({
         page: null,

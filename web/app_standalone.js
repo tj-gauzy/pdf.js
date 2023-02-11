@@ -364,6 +364,7 @@ const defaultServices = {
 /**
  * Create a new ExternalServices class with the given overrides
  * @param {{}} overrides
+ * @param {EventBus} eventBus
  * @returns DefaultExternalServices
  */
 function genExternalServices(overrides = {}) {
@@ -371,11 +372,11 @@ function genExternalServices(overrides = {}) {
 
   class ExternalServices extends DefaultExternalServices {
     static createDownloadManager(options) {
-      return new services.DownloadManager();
+      return new services.DownloadManager(options);
     }
 
-    static createPreferences() {
-      return new services.GenericPreferences();
+    static createPreferences(options) {
+      return new services.GenericPreferences(options);
     }
 
     static createL10n({ locale = "zh-CN" }) {
@@ -386,8 +387,8 @@ function genExternalServices(overrides = {}) {
       return new services.GenericScripting(sandboxBundleSrc);
     }
 
-    static createViewHistory({ fingerprint }) {
-      return new services.ViewHistory(fingerprint);
+    static createViewHistory({ fingerprint, app }) {
+      return new services.ViewHistory(fingerprint, app);
     }
   }
 
