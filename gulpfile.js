@@ -2394,67 +2394,119 @@ gulp.task(
 );
 
 gulp.task(
-  "pre-reader",
-  gulp.series("lib", "minified", function createDist() {
-    console.log();
-    console.log("### Cloning baseline distribution");
+  "build-reader",
+  gulp.series(
+    function prepareBuild(done) {
+      console.log();
+      console.log("### Building reader package. Cleaning up first");
 
-    rimraf.sync(DIST_DIR);
-    mkdirp.sync(DIST_DIR);
+      fs.rm(BUILD_DIR, { recursive: true, maxRetries: 3 }, done);
+    },
+    "lib",
+    "locale",
+    function scriptingMinified() {
+      const defines = builder.merge(DEFINES, { MINIFIED: true, GENERIC: true });
+      return merge([
+        buildDefaultPreferences(defines, "minified/"),
+        createTemporaryScriptingBundle(defines),
+      ]);
+    },
+    function createMinified() {
+      console.log();
+      console.log("### Creating minified viewer");
+      const defines = builder.merge(DEFINES, { MINIFIED: true, GENERIC: true });
 
-    console.log();
-    console.log("### Overwriting all files");
-    rimraf.sync(DIST_DIR);
+      return buildMinified(defines, MINIFIED_DIR);
+    },
+    async function minifyCompression(done) {
+      const dir = MINIFIED_DIR;
 
-    return merge([
-      packageJson().pipe(gulp.dest(DIST_DIR)),
-      vfs
-        .src("external/dist/**/*", { base: "external/dist", stripBOM: false })
-        .pipe(gulp.dest(DIST_DIR)),
-      gulp.src("external/bcmaps/*.bcmap").pipe(gulp.dest(DIST_DIR + "cmaps/")),
-      gulp
-        .src("external/standard_fonts/*.pfb")
-        .pipe(gulp.dest(DIST_DIR + "standard_fonts/")),
-      gulp
-        .src(LIB_DIR + "**/*", { base: LIB_DIR })
-        .pipe(gulp.dest(DIST_DIR + "lib/")),
-      gulp
-        .src(MINIFIED_DIR + "build/pdf.worker.js")
-        .pipe(rename("pdf.worker.min.js"))
-        .pipe(gulp.dest(DIST_DIR + "build/")),
-      gulp
-        .src(MINIFIED_DIR + "build/pdf.sandbox.js")
-        .pipe(rename("pdf.sandbox.min.js"))
-        .pipe(gulp.dest(DIST_DIR + "build/")),
-      gulp
-        .src(MINIFIED_DIR + "web/viewer.css")
-        .pipe(gulp.dest(DIST_DIR + "web/")),
-      gulp
-        .src("web/locale/**/*")
-        .pipe(gulp.dest(DIST_DIR + "web/locale/")),
-      gulp
-        .src("web/images/**/*")
-        .pipe(gulp.dest(DIST_DIR + "web/images/")),
-    ]);
-  })
+      const pdfWorkerFile = fs
+        .readFileSync(dir + "/build/pdf.worker.js")
+        .toString();
+      const pdfSandboxFile = fs
+        .readFileSync(dir + "/build/pdf.sandbox.js")
+        .toString();
+
+      console.log();
+      console.log("### Minifying js files");
+
+      const Terser = require("terser");
+      const options = {
+        compress: {
+          // V8 chokes on very long sequences, work around that.
+          sequences: false,
+        },
+        keep_classnames: true,
+        keep_fnames: true,
+      };
+
+      fs.writeFileSync(
+        dir + "/build/pdf.worker.min.js",
+        (await Terser.minify(pdfWorkerFile, options)).code
+      );
+      fs.writeFileSync(
+        dir + "/build/pdf.sandbox.min.js",
+        (await Terser.minify(pdfSandboxFile, options)).code
+      );
+
+      console.log();
+      console.log("### Minified bundles created.");
+
+      done();
+    },
+    function createDist() {
+      console.log();
+      console.log("### Cloning baseline distribution");
+
+      console.log();
+      console.log("### Overwriting all files");
+      mkdirp.sync(DIST_DIR);
+
+      return merge([
+        packageJson().pipe(gulp.dest(DIST_DIR)),
+        vfs
+          .src("external/dist/**/*", { base: "external/dist", stripBOM: false })
+          .pipe(gulp.dest(DIST_DIR)),
+        gulp
+          .src("external/bcmaps/*.bcmap")
+          .pipe(gulp.dest(DIST_DIR + "cmaps/")),
+        gulp
+          .src("external/standard_fonts/*.pfb")
+          .pipe(gulp.dest(DIST_DIR + "standard_fonts/")),
+        gulp
+          .src(LIB_DIR + "**/*", { base: LIB_DIR })
+          .pipe(gulp.dest(DIST_DIR + "lib/")),
+        gulp
+          .src(MINIFIED_DIR + "build/pdf.worker.min.js")
+          .pipe(gulp.dest(DIST_DIR + "build/")),
+        gulp
+          .src(MINIFIED_DIR + "build/pdf.sandbox.min.js")
+          .pipe(gulp.dest(DIST_DIR + "build/")),
+        gulp
+          .src(MINIFIED_DIR + "web/viewer.css")
+          .pipe(gulp.dest(DIST_DIR + "web/")),
+        gulp.src("web/locale/**/*").pipe(gulp.dest(DIST_DIR + "web/locale/")),
+        gulp.src("web/images/**/*").pipe(gulp.dest(DIST_DIR + "web/images/")),
+      ]);
+    }
+  )
 );
 
 gulp.task("update-reader", () => {
   console.log();
   console.log("### Updating pdfjs lib files");
 
+  const defines = builder.merge(DEFINES, { GENERIC: true });
+
   return merge([
     buildLib(
       builder.merge(DEFINES, { GENERIC: true, LIB: true }),
       "build/lib/"
     ),
-    preprocessCSS("web/viewer.css", builder.merge(DEFINES, { GENERIC: true }))
+    preprocessCSS("web/viewer.css", defines)
       .pipe(
-        postcss([
-          postcssLogical({ preserve: true }),
-          postcssDirPseudoClass(),
-          autoprefixer(AUTOPREFIXER_CONFIG),
-        ])
+        postcss([postcssDirPseudoClass(), autoprefixer(AUTOPREFIXER_CONFIG)])
       )
       .pipe(gulp.dest(DIST_DIR + "web")),
     gulp
