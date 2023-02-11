@@ -244,14 +244,22 @@ class PDFOutlineViewer extends BaseTreeViewer {
         div.append(element);
 
         if (item.items.length > 0) {
+          // dblclick link toggles visibility of all children
+          element.ondblclick = () => {
+            const toggler = element.previousElementSibling;
+            if (toggler) {
+              toggler.classList.toggle("treeItemsHidden");
+            }
+          };
+
           const currentLevel = item.level || 1;
           hasAnyNesting = true;
           this._addToggleButton(div, item);
 
           const itemsDiv = document.createElement("div");
           itemsDiv.className = "treeItems";
+          itemsDiv.style.setProperty("--outline-level", currentLevel + 1);
           div.append(itemsDiv);
-          div.style.setProperty("--outline-level", currentLevel + 1);
 
           const items = item.items;
           items.forEach(subItem => {
