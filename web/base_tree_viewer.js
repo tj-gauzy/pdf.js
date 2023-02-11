@@ -165,10 +165,25 @@ class BaseTreeViewer {
     }
     this._updateCurrentTreeItem(treeItem);
 
-    this.container.scrollTo(
-      treeItem.offsetLeft,
-      treeItem.offsetTop + TREEITEM_OFFSET_TOP
-    );
+    // Calculate the accurate offset of the treeItem,
+    // since offsetParent is not reliable
+    const offset = {
+      top: treeItem.offsetTop,
+      left: treeItem.offsetLeft,
+    };
+    let cycleCount = 0;
+    let offsetParent = treeItem.offsetParent;
+    while (offsetParent && offsetParent !== this.container) {
+      if (++cycleCount > 100) {
+        console.error("Too many node levels, aborting.");
+        break;
+      }
+      offset.left += offsetParent.offsetLeft;
+      offset.top += offsetParent.offsetTop;
+      offsetParent = offsetParent.offsetParent;
+    }
+
+    this.container.scrollTo(offset.left, offset.top + TREEITEM_OFFSET_TOP);
   }
 }
 
