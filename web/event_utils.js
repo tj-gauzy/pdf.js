@@ -177,7 +177,11 @@ class EventBus {
    * @param {string} eventName
    */
   hasListener(eventName) {
-    return this.#listeners && this.#listeners[eventName] && this.#listeners[eventName].length > 0;
+    return (
+      this.#listeners &&
+      this.#listeners[eventName] &&
+      this.#listeners[eventName].length > 0
+    );
   }
 
   /**
