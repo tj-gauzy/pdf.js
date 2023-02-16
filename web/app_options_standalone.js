@@ -33,7 +33,11 @@ class AppOption {
         if (kind === OptionKind.PREFERENCE) {
           const value = defaultOption.value,
             valueType = typeof value;
-          if (valueType === "boolean" || valueType === "string" || valueType === "number" && Number.isInteger(value)) {
+          if (
+            valueType === "boolean" ||
+            valueType === "string" ||
+            (valueType === "number" && Number.isInteger(value))
+          ) {
             options[name] = value;
             continue;
           }
@@ -41,7 +45,10 @@ class AppOption {
         }
       }
       const userOption = this.userOptions[name];
-      options[name] = userOption !== undefined ? userOption : compatibilityParams[name] ?? defaultOption.value;
+      options[name] =
+        userOption !== undefined
+          ? userOption
+          : compatibilityParams[name] ?? defaultOption.value;
     }
     return options;
   }
@@ -62,6 +69,10 @@ class AppOption {
 
   _hasUserOptions() {
     return Object.keys(this.userOptions).length > 0;
+  }
+
+  getUserOptions() {
+    return this.userOptions ?? {};
   }
 }
 

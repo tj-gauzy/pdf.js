@@ -166,6 +166,26 @@ class BasePreferences {
     }
     return obj;
   }
+
+  get defaults() {
+    return this.#defaults;
+  }
+
+  get prefs() {
+    return this.#prefs;
+  }
+
+  set prefs(value) {
+    this.#prefs = value;
+  }
+
+  get initializedPromise() {
+    return this.#initializedPromise;
+  }
+
+  set initializedPromise(value) {
+    this.#initializedPromise = value;
+  }
 }
 
 export { BasePreferences };

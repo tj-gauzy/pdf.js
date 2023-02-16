@@ -5,12 +5,12 @@ import {
 } from "./app.js";
 import { GenericL10n, setL10n } from "./genericl10n.js";
 import { AppOption } from "./app_options_standalone.js";
+import { DownloadManager as BaseDownloadManager } from "./download_manager.js";
 import { BasePreferences } from "./preferences.js";
+import { ViewHistory as BaseViewHistory } from "./view_history.js";
 import { createPromiseCapability } from "pdfjs-lib";
-import { DownloadManager } from "./download_manager.js";
 import { GenericScripting } from "./generic_scripting.js";
 import { PDFViewer } from "./pdf_viewer.js";
-import { ViewHistory } from "./view_history.js";
 
 // #region PDFAPP
 
@@ -28,7 +28,7 @@ function App(config) {
   } = config || {};
 
   this._initializedCapability = createPromiseCapability();
-  this.appConfig = appConfig;
+  this.appConfig = appConfig || genAppConfig(document);
   this.appOptions = new AppOption();
 
   if (l10n) {
@@ -86,7 +86,6 @@ App.prototype.restore = async function () {
 
   // Rebinder events for current instance
   if (!this._boundEvents.windowResize) {
-    this.bindEvents();
     this.bindWindowEvents();
   }
 
@@ -108,7 +107,6 @@ App.prototype.freeze = function () {
 
   // Unbind events for current instance
   if (this._boundEvents.windowResize) {
-    this.unbindEvents();
     this.unbindWindowEvents();
   }
 
@@ -343,22 +341,164 @@ function genAppConfig(document, overrides = {}) {
   return config;
 }
 
-class GenericPreferences extends BasePreferences {
+// #region Services
+
+class DownloadManager extends BaseDownloadManager {
+  constructor({ app }) {
+    super();
+
+    this.app = app || {};
+  }
+}
+
+class Preferences extends BasePreferences {
+  constructor({ app }) {
+    super();
+
+    const readStoragePromise = this.initializedPromise;
+
+    this.initializedPromise = createPromiseCapability();
+
+    this.app = app || {};
+
+    readStoragePromise
+      .then(() => {
+        return this.initialize();
+      })
+      .then(() => {
+        this.initializedPromise.resolve();
+      });
+  }
+
+  async initialize() {
+    return Promise.resolve();
+  }
+
+  async waitForApp() {
+    return new Promise(resolve => {
+      const func = () => {
+        if (this.app) {
+          resolve();
+        } else {
+          requestAnimationFrame(func);
+        }
+      };
+
+      func();
+    });
+  }
+
   async _writeToStorage(prefObj) {
     localStorage.setItem("pdfjs.preferences", JSON.stringify(prefObj));
   }
 
   async _readFromStorage(prefObj) {
+    await this.waitForApp();
+
     return JSON.parse(localStorage.getItem("pdfjs.preferences"));
+  }
+
+  async reset() {
+    await this.initializedPromise;
+    this.prefs = Object.create(null);
+    return this._writeToStorage({}).catch(reason => {
+      this.pref = {};
+      throw reason;
+    });
+  }
+
+  async set(name, value) {
+    await this.initializedPromise;
+    const defaultValue = this.defaults[name],
+      prefs = this.prefs;
+    if (defaultValue === undefined) {
+      throw new Error(`Set preference: "${name}" is undefined.`);
+    } else if (value === undefined) {
+      throw new Error("Set preference: no value is specified.");
+    }
+    const valueType = typeof value,
+      defaultType = typeof defaultValue;
+    if (valueType !== defaultType) {
+      if (valueType === "number" && defaultType === "string") {
+        value = value.toString();
+      } else {
+        throw new Error(
+          `Set preference: "${value}" is a ${valueType}, expected a ${defaultType}.`
+        );
+      }
+    } else {
+      if (valueType === "number" && !Number.isInteger(value)) {
+        throw new Error(`Set preference: "${value}" must be an integer.`);
+      }
+    }
+    if (value === defaultValue) {
+      delete prefs[name];
+    }
+
+    prefs[name] = value;
+    return this._writeToStorage(prefs).catch(reason => {
+      this.prefs = prefs;
+      throw reason;
+    });
+  }
+
+  async getAll() {
+    await this.initializedPromise;
+    const obj = Object.create(null);
+    const defaults = this.defaults;
+    const prefs = this.prefs;
+    const initialOptions = this.app
+      ? this.app.appOptions.getUserOptions() || {}
+      : {};
+    for (const name in defaults) {
+      obj[name] = prefs[name] ?? initialOptions[name] ?? defaults[name];
+    }
+    return obj;
+  }
+}
+
+const DEFAULT_VIEW_HISTORY_CACHE_SIZE = 50;
+class ViewHistory extends BaseViewHistory {
+  app = null;
+
+  constructor(fingerprint, app) {
+    super(
+      fingerprint,
+      typeof app === "number" ? app : DEFAULT_VIEW_HISTORY_CACHE_SIZE
+    );
+
+    if (!app) {
+      app = {};
+    }
+    this.app = typeof app !== "number" ? app : {};
+  }
+
+  async waitForApp() {
+    return new Promise(resolve => {
+      const func = () => {
+        if (this.app) {
+          resolve();
+        } else {
+          requestAnimationFrame(func);
+        }
+      };
+
+      func();
+    });
+  }
+
+  async _readFromStorage() {
+    await this.waitForApp();
+    return localStorage.getItem("pdfjs.history");
   }
 }
 
 const defaultServices = {
   DownloadManager,
-  GenericPreferences,
-  GenericL10n,
-  GenericScripting,
+  Preferences,
   ViewHistory,
+  L10n: GenericL10n,
+  Scripting: GenericScripting,
 };
 
 /**
@@ -376,15 +516,15 @@ function genExternalServices(overrides = {}) {
     }
 
     static createPreferences(options) {
-      return new services.GenericPreferences(options);
+      return new services.Preferences(options);
     }
 
     static createL10n({ locale = "zh-CN" }) {
-      return new services.GenericL10n(locale);
+      return new services.L10n(locale);
     }
 
     static createScripting({ sandboxBundleSrc }) {
-      return new services.GenericScripting(sandboxBundleSrc);
+      return new services.Scripting(sandboxBundleSrc);
     }
 
     static createViewHistory({ fingerprint, app }) {
@@ -395,6 +535,15 @@ function genExternalServices(overrides = {}) {
   return ExternalServices;
 }
 
-export { App, genAppConfig, genExternalServices };
+// #endregion
+
+export {
+  App,
+  DownloadManager,
+  genAppConfig,
+  genExternalServices,
+  Preferences,
+  ViewHistory,
+};
 
 export default App;
