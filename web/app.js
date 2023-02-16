@@ -2802,7 +2802,13 @@ function webViewerWheel(evt) {
     // After scaling the page via zoomIn/zoomOut, the position of the upper-
     // left corner is restored. When the mouse wheel is used, the position
     // under the cursor should be restored instead.
-    PDFViewerApplication._centerAtPos(previousScale, evt.clientX, evt.clientY);
+    // Incase the app container is not from left-top of the window,
+    // we need to adjust the scale center position by the container position.
+    const containerPos = PDFViewerApplication.appConfig.appContainer?.getBoundingClientRect() || { left: 0, top: 0};
+    const clientX = evt.clientX - containerPos.left;
+    const clientY = evt.clientY - containerPos.top;
+
+    PDFViewerApplication._centerAtPos(previousScale, clientX, clientY);
   } else {
     setZoomDisabledTimeout();
   }
