@@ -183,7 +183,20 @@ class BaseTreeViewer {
       offsetParent = offsetParent.offsetParent;
     }
 
-    this.container.scrollTo(offset.left, offset.top + TREEITEM_OFFSET_TOP);
+    const { scrollTop, scrollLeft, clientHeight, clientWidth } = this.container;
+    const { offsetHeight, offsetWidth } = treeItem;
+
+    if (
+      offset.top < scrollTop ||
+      offset.top + offsetHeight > scrollTop + clientHeight ||
+      offset.left < scrollLeft ||
+      offset.left + offsetWidth > scrollLeft + clientWidth
+    ) {
+      this.container.scrollTo(
+        offset.left,
+        offset.top + (this.TREEITEM_OFFSET_TOP || TREEITEM_OFFSET_TOP)
+      );
+    }
   }
 }
 
