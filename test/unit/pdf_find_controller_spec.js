@@ -780,4 +780,78 @@ describe("pdf_find_controller", function () {
       },
     });
   });
+
+  it("performs a search in a text containing combining diacritics", async function () {
+    if (isNodeJS) {
+      pending("Linked test-cases are not supported in Node.js.");
+    }
+
+    const { eventBus, pdfFindController } = await initPdfFindController(
+      "issue12909.pdf"
+    );
+
+    await testSearch({
+      eventBus,
+      pdfFindController,
+      state: {
+        query: "הספר",
+        matchDiacritics: true,
+      },
+      matchesPerPage: [0, 0, 0, 0, 0, 0, 0, 0, 1],
+      selectedMatch: {
+        pageIndex: 8,
+        matchIndex: 0,
+      },
+    });
+
+    await testSearch({
+      eventBus,
+      pdfFindController,
+      state: {
+        query: "הספר",
+        matchDiacritics: false,
+      },
+      matchesPerPage: [0, 1, 0, 0, 0, 0, 0, 0, 1],
+      selectedMatch: {
+        pageIndex: 8,
+        matchIndex: 0,
+      },
+    });
+  });
+
+  it("performs a search in a text with some Hiragana diacritics at the end of a line", async function () {
+    const { eventBus, pdfFindController } = await initPdfFindController(
+      "issue16063.pdf"
+    );
+
+    await testSearch({
+      eventBus,
+      pdfFindController,
+      state: {
+        query: "行うことができる速結端子",
+      },
+      matchesPerPage: [1],
+      selectedMatch: {
+        pageIndex: 0,
+        matchIndex: 0,
+      },
+      pageMatches: [[63]],
+      pageMatchesLength: [[12]],
+    });
+
+    await testSearch({
+      eventBus,
+      pdfFindController,
+      state: {
+        query: "デュプレックス",
+      },
+      matchesPerPage: [1],
+      selectedMatch: {
+        pageIndex: 0,
+        matchIndex: 0,
+      },
+      pageMatches: [[205]],
+      pageMatchesLength: [[7]],
+    });
+  });
 });

@@ -457,7 +457,6 @@ class Driver {
 
       this._log('Loading file "' + task.file + '"\n');
 
-      const absoluteUrl = new URL(task.file, window.location).href;
       try {
         let xfaStyleElement = null;
         if (task.enableXfa) {
@@ -471,11 +470,10 @@ class Driver {
         }
 
         const loadingTask = getDocument({
-          url: absoluteUrl,
+          url: new URL(task.file, window.location),
           password: task.password,
           cMapUrl: CMAP_URL,
           standardFontDataUrl: STANDARD_FONT_DATA_URL,
-          disableRange: task.disableRange,
           disableAutoFetch: !task.enableAutoFetch,
           pdfBug: true,
           useSystemFonts: task.useSystemFonts,
@@ -486,24 +484,18 @@ class Driver {
         let promise = loadingTask.promise;
 
         if (task.save) {
-          if (!task.annotationStorage) {
-            promise = Promise.reject(
-              new Error("Missing `annotationStorage` entry.")
-            );
-          } else {
-            promise = loadingTask.promise.then(async doc => {
-              for (const [key, value] of Object.entries(
-                task.annotationStorage
-              )) {
-                doc.annotationStorage.setValue(key, value);
-              }
-              const data = await doc.saveDocument();
-              await loadingTask.destroy();
-              delete task.annotationStorage;
+          promise = loadingTask.promise.then(async doc => {
+            if (!task.annotationStorage) {
+              throw new Error("Missing `annotationStorage` entry.");
+            }
+            doc.annotationStorage.setAll(task.annotationStorage);
 
-              return getDocument(data).promise;
-            });
-          }
+            const data = await doc.saveDocument();
+            await loadingTask.destroy();
+            delete task.annotationStorage;
+
+            return getDocument(data).promise;
+          });
         }
 
         promise.then(
@@ -668,11 +660,7 @@ class Driver {
               pageColors = null;
 
             if (task.annotationStorage) {
-              const entries = Object.entries(task.annotationStorage),
-                docAnnotationStorage = task.pdfDoc.annotationStorage;
-              for (const [key, value] of entries) {
-                docAnnotationStorage.setValue(key, value);
-              }
+              task.pdfDoc.annotationStorage.setAll(task.annotationStorage);
             }
 
             let textLayerCanvas, annotationLayerCanvas, annotationLayerContext;

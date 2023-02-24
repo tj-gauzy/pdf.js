@@ -15,8 +15,7 @@
 
 import {
   AbortException,
-  arrayByteLength,
-  arraysToBytes,
+  assert,
   createPromiseCapability,
   getVerbosityLevel,
   info,
@@ -30,8 +29,12 @@ import {
   VerbosityLevel,
   warn,
 } from "../shared/util.js";
+import {
+  arrayBuffersToBytes,
+  getNewAnnotationsMap,
+  XRefParseException,
+} from "./core_utils.js";
 import { Dict, Ref } from "./primitives.js";
-import { getNewAnnotationsMap, XRefParseException } from "./core_utils.js";
 import { LocalPdfManager, NetworkPdfManager } from "./pdf_manager.js";
 import { clearGlobalCaches } from "./cleanup_helper.js";
 import { incrementalUpdate } from "./writer.js";
@@ -93,7 +96,7 @@ class WorkerMessageHandler {
     let pdfManager;
     let terminated = false;
     let cancelXHRs = null;
-    const WorkerTasks = [];
+    const WorkerTasks = new Set();
     const verbosity = getVerbosityLevel();
 
     const { docId, apiVersion } = docParams;
@@ -151,13 +154,12 @@ class WorkerMessageHandler {
     }
 
     function startWorkerTask(task) {
-      WorkerTasks.push(task);
+      WorkerTasks.add(task);
     }
 
     function finishWorkerTask(task) {
       task.finish();
-      const i = WorkerTasks.indexOf(task);
-      WorkerTasks.splice(i, 1);
+      WorkerTasks.delete(task);
     }
 
     async function loadDocument(recoveryMode) {
@@ -210,20 +212,26 @@ class WorkerMessageHandler {
       enableXfa,
       evaluatorOptions,
     }) {
+      const pdfManagerArgs = {
+        source: null,
+        disableAutoFetch,
+        docBaseUrl,
+        docId,
+        enableXfa,
+        evaluatorOptions,
+        handler,
+        length,
+        password,
+        rangeChunkSize,
+      };
       const pdfManagerCapability = createPromiseCapability();
       let newPdfManager;
 
       if (data) {
         try {
-          newPdfManager = new LocalPdfManager(
-            docId,
-            data,
-            password,
-            handler,
-            evaluatorOptions,
-            enableXfa,
-            docBaseUrl
-          );
+          pdfManagerArgs.source = data;
+
+          newPdfManager = new LocalPdfManager(pdfManagerArgs);
           pdfManagerCapability.resolve(newPdfManager);
         } catch (ex) {
           pdfManagerCapability.reject(ex);
@@ -246,24 +254,13 @@ class WorkerMessageHandler {
           if (!fullRequest.isRangeSupported) {
             return;
           }
+          pdfManagerArgs.source = pdfStream;
+          pdfManagerArgs.length = fullRequest.contentLength;
           // We don't need auto-fetch when streaming is enabled.
-          disableAutoFetch =
-            disableAutoFetch || fullRequest.isStreamingSupported;
+          pdfManagerArgs.disableAutoFetch =
+            pdfManagerArgs.disableAutoFetch || fullRequest.isStreamingSupported;
 
-          newPdfManager = new NetworkPdfManager(
-            docId,
-            pdfStream,
-            {
-              msgHandler: handler,
-              password,
-              length: fullRequest.contentLength,
-              disableAutoFetch,
-              rangeChunkSize,
-            },
-            evaluatorOptions,
-            enableXfa,
-            docBaseUrl
-          );
+          newPdfManager = new NetworkPdfManager(pdfManagerArgs);
           // There may be a chance that `newPdfManager` is not initialized for
           // the first few runs of `readchunk` block of code. Be sure to send
           // all cached chunks, if any, to chunked_stream via pdf_manager.
@@ -282,21 +279,15 @@ class WorkerMessageHandler {
 
       let loaded = 0;
       const flushChunks = function () {
-        const pdfFile = arraysToBytes(cachedChunks);
+        const pdfFile = arrayBuffersToBytes(cachedChunks);
         if (length && pdfFile.length !== length) {
           warn("reported HTTP length is different from actual");
         }
         // the data is array, instantiating directly from it
         try {
-          newPdfManager = new LocalPdfManager(
-            docId,
-            pdfFile,
-            password,
-            handler,
-            evaluatorOptions,
-            enableXfa,
-            docBaseUrl
-          );
+          pdfManagerArgs.source = pdfFile;
+
+          newPdfManager = new LocalPdfManager(pdfManagerArgs);
           pdfManagerCapability.resolve(newPdfManager);
         } catch (ex) {
           pdfManagerCapability.reject(ex);
@@ -314,8 +305,17 @@ class WorkerMessageHandler {
               cancelXHRs = null;
               return;
             }
+            if (
+              typeof PDFJSDev === "undefined" ||
+              PDFJSDev.test("!PRODUCTION || TESTING")
+            ) {
+              assert(
+                value instanceof ArrayBuffer,
+                "readChunk (getPdfManager) - expected an ArrayBuffer."
+              );
+            }
+            loaded += value.byteLength;
 
-            loaded += arrayByteLength(value);
             if (!fullRequest.isStreamingSupported) {
               handler.send("DocProgress", {
                 loaded,
@@ -328,7 +328,6 @@ class WorkerMessageHandler {
             } else {
               cachedChunks.push(value);
             }
-
             fullRequest.read().then(readChunk, reject);
           } catch (e) {
             reject(e);
@@ -536,6 +535,7 @@ class WorkerMessageHandler {
           },
           reason => {
             finishWorkerTask(task);
+            throw reason;
           }
         );
       });
@@ -831,6 +831,13 @@ class WorkerMessageHandler {
       setupDoc(docParams);
       docParams = null; // we don't need docParams anymore -- saving memory.
     });
+
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
+      handler.on("GetXFADatasets", function (data) {
+        return pdfManager.ensureDoc("xfaDatasets");
+      });
+    }
+
     return workerHandlerName;
   }
 

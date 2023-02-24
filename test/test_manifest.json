@@ -7356,5 +7356,27 @@
       "md5": "78a12254cac90ba5219a4c5555ea35ed",
       "rounds": 1,
       "type": "eq"
+   },
+   {
+      "id": "bug1770750-annotations",
+      "file": "pdfs/bug1770750.pdf",
+      "md5": "01e6d77eac90b4b08d75240d3db2b826",
+      "rounds": 1,
+      "type": "eq",
+      "annotations": true
+   },
+   {
+      "id": "issue16081",
+      "file": "pdfs/issue16081.pdf",
+      "md5": "e890d55c9527a116431ebef3efb960ff",
+      "link": true,
+      "type": "other"
+   },
+   {
+      "id": "f1040_2022.pdf",
+      "file": "pdfs/f1040_2022.pdf",
+      "md5": "1eec7137e471a3d68a20855a04293b5b",
+      "link": true,
+      "type": "other"
    }
 ]
