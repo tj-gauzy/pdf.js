@@ -151,7 +151,7 @@ function preprocess(inFilename, outFilename, defines) {
 
   while ((line = readLine()) !== null) {
     ++lineNumber;
-    const m = control.exec(line);
+    const m = control.exec(line.trim());
     if (m) {
       switch (m[1]) {
         case "if":
