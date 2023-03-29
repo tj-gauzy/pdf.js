@@ -260,8 +260,7 @@ body {
 
 #sidebarContainer {
   position: absolute;
-  top: 32px;
-  bottom: 0;
+  inset-block: 32px 0;
   inset-inline-start: calc(-1 * var(--sidebar-width));
   width: var(--sidebar-width);
   visibility: hidden;
@@ -284,16 +283,12 @@ body {
 
 #mainContainer {
   position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 0;
   min-width: 350px;
 }
 
 #sidebarContent {
-  top: 32px;
-  bottom: 0;
+  inset-block: 32px 0;
   inset-inline-start: 0;
   overflow: auto;
   position: absolute;
@@ -304,10 +299,7 @@ body {
 #viewerContainer {
   overflow: auto;
   position: absolute;
-  top: 32px;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  inset: 32px 0 0;
   outline: none;
 }
 #viewerContainer:not(.pdfPresentationMode) {
@@ -322,8 +314,7 @@ body {
 
 .toolbar {
   position: relative;
-  left: 0;
-  right: 0;
+  inset-inline: 0;
   z-index: 9999;
   cursor: default;
   font: message-box;
@@ -363,10 +354,9 @@ body {
 
 #sidebarResizer {
   position: absolute;
-  top: 0;
-  bottom: 0;
   inset-inline-end: -4px;
   width: 4px;
+  inset-block: 0;
   z-index: 200;
   cursor: ew-resize;
 }
@@ -1178,8 +1168,7 @@ a.secondaryToolbarButton[href="#"] {
 #layersView {
   position: absolute;
   width: calc(100% - 8px);
-  top: 0;
-  bottom: 0;
+  inset-block: 0;
   padding: 4px 4px 0;
   overflow: auto;
   user-select: none;
@@ -1426,10 +1415,7 @@ dialog :link {
   position: fixed;
   background: rgba(0, 0, 0, 0);
   display: block;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  inset: 0;
   overflow: hidden;
   z-index: 50000; /* should be higher than anything else in PDF.js! */
 }

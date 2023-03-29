@@ -40,7 +40,6 @@ import {
   PermissionFlag,
   shadow,
   UnexpectedResponseException,
-  UNSUPPORTED_FEATURES,
   Util,
   VerbosityLevel,
 } from "./shared/util.js";
@@ -114,7 +113,6 @@ export {
   shadow,
   SVGGraphics,
   UnexpectedResponseException,
-  UNSUPPORTED_FEATURES,
   updateTextLayer,
   Util,
   VerbosityLevel,

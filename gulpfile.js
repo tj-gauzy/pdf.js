@@ -82,7 +82,7 @@ const ENV_TARGETS = [
   "Chrome >= 87",
   "Firefox ESR",
   "Safari >= 14.1",
-  "Node >= 14",
+  "Node >= 16",
   "> 1%",
   "not IE > 0",
   "not dead",
@@ -130,7 +130,7 @@ function safeSpawnSync(command, parameters, options) {
     if (!/[\s`~!#$*(){[|\\;'"<>?]/.test(param)) {
       return param;
     }
-    return '"' + param.replace(/([$\\"`])/g, "\\$1") + '"';
+    return '"' + param.replaceAll(/([$\\"`])/g, "\\$1") + '"';
   });
 
   const result = spawnSync(command, parameters, options);
@@ -434,12 +434,15 @@ function createSandboxExternal(defines) {
     saveComments: false,
     defines,
   };
-  return gulp.src("./src/pdf.sandbox.external.js").pipe(
-    transform("utf8", content => {
-      content = preprocessor2.preprocessPDFJSCode(ctx, content);
-      return `${licenseHeader}\n${content}`;
-    })
-  );
+  return gulp
+    .src("./src/pdf.sandbox.external.js")
+    .pipe(rename("pdf.sandbox.external.sys.mjs"))
+    .pipe(
+      transform("utf8", content => {
+        content = preprocessor2.preprocessPDFJSCode(ctx, content);
+        return `${licenseHeader}\n${content}`;
+      })
+    );
 }
 
 function createTemporaryScriptingBundle(defines, extraOptions = undefined) {
@@ -909,7 +912,7 @@ function preprocessCSS(source, defines) {
 
   // Strip out all license headers in the middle.
   const reg = /\n\/\* Copyright(.|\n)*?Mozilla Foundation(.|\n)*?\*\//g;
-  out = out.replace(reg, "");
+  out = out.replaceAll(reg, "");
 
   const i = source.lastIndexOf("/");
   return createStringSource(source.substr(i + 1), out);
@@ -1381,7 +1384,7 @@ gulp.task(
           .pipe(gulp.dest(MOZCENTRAL_L10N_DIR)),
         gulp.src("LICENSE").pipe(gulp.dest(MOZCENTRAL_EXTENSION_DIR)),
         gulp
-          .src(FIREFOX_CONTENT_DIR + "PdfJsDefaultPreferences.jsm")
+          .src(FIREFOX_CONTENT_DIR + "PdfJsDefaultPreferences.sys.mjs")
           .pipe(transform("utf8", preprocessDefaultPreferences))
           .pipe(gulp.dest(MOZCENTRAL_CONTENT_DIR)),
       ]);
@@ -1486,19 +1489,22 @@ gulp.task(
   )
 );
 
-gulp.task("jsdoc", async function (done) {
+gulp.task("jsdoc", function (done) {
   console.log();
   console.log("### Generating documentation (JSDoc)");
 
   const JSDOC_FILES = ["src/display/api.js"];
 
-  await rimraf(JSDOC_BUILD_DIR);
-  await mkdirp(JSDOC_BUILD_DIR);
-
-  const command = `"node_modules/.bin/jsdoc" -d ${JSDOC_BUILD_DIR} ${JSDOC_FILES.join(
-    " "
-  )}`;
-  exec(command, done);
+  rimraf(JSDOC_BUILD_DIR, function () {
+    mkdirp(JSDOC_BUILD_DIR).then(function () {
+      const command =
+        '"node_modules/.bin/jsdoc" -d ' +
+        JSDOC_BUILD_DIR +
+        " " +
+        JSDOC_FILES.join(" ");
+      exec(command, done);
+    });
+  });
 });
 
 gulp.task("types", function (done) {
@@ -1554,9 +1560,10 @@ function buildLibHelper(bundleDefines, inputStream, outputDir) {
     }).code;
     const removeCjsSrc =
       /^(var\s+\w+\s*=\s*(_interopRequireDefault\()?require\(".*?)(?:\/src)(\/[^"]*"\)\)?;)$/gm;
-    content = content.replace(removeCjsSrc, (all, prefix, interop, suffix) => {
-      return prefix + suffix;
-    });
+    content = content.replaceAll(
+      removeCjsSrc,
+      (all, prefix, interop, suffix) => prefix + suffix
+    );
     return licenseHeaderLibre + content;
   }
   const babel = require("@babel/core");
@@ -2077,12 +2084,11 @@ gulp.task(
   )
 );
 
-gulp.task("clean", async function (done) {
+gulp.task("clean", function (done) {
   console.log();
   console.log("### Cleaning up project builds");
 
-  await rimraf(BUILD_DIR);
-  done();
+  rimraf(BUILD_DIR, done);
 });
 
 gulp.task("importl10n", function (done) {
@@ -2219,6 +2225,9 @@ function packageJson() {
       type: "git",
       url: DIST_REPO_URL,
     },
+    engines: {
+      node: ">=16",
+    },
   };
 
   return createStringSource(
@@ -2250,7 +2259,7 @@ gulp.task(
 
       console.log();
       console.log("### Overwriting all files");
-      rimraf.sync(DIST_DIR);
+      rimraf.sync(path.join(DIST_DIR, "*"));
 
       return merge([
         packageJson().pipe(gulp.dest(DIST_DIR)),
@@ -2564,7 +2573,7 @@ gulp.task(
       // The mozcentral baseline directory is a Git repository, so we
       // remove all files and copy the current mozcentral build files
       // into it to create the diff.
-      rimraf.sync(MOZCENTRAL_BASELINE_DIR);
+      rimraf.sync(MOZCENTRAL_BASELINE_DIR + "*");
 
       gulp
         .src([BUILD_DIR + "mozcentral/**/*"])

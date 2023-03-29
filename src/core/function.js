@@ -502,9 +502,7 @@ class PDFFunction {
 
 function isPDFFunction(v) {
   let fnDict;
-  if (typeof v !== "object") {
-    return false;
-  } else if (v instanceof Dict) {
+  if (v instanceof Dict) {
     fnDict = v;
   } else if (v instanceof BaseStream) {
     fnDict = v.dict;
@@ -628,8 +626,13 @@ class PostScriptEvaluator {
           }
           break;
         case "atan":
+          b = stack.pop();
           a = stack.pop();
-          stack.push(Math.atan(a));
+          a = (Math.atan2(a, b) / Math.PI) * 180;
+          if (a < 0) {
+            a += 360;
+          }
+          stack.push(a);
           break;
         case "bitshift":
           b = stack.pop();
@@ -650,7 +653,7 @@ class PostScriptEvaluator {
           break;
         case "cos":
           a = stack.pop();
-          stack.push(Math.cos(a));
+          stack.push(Math.cos(((a % 360) / 180) * Math.PI));
           break;
         case "cvi":
           a = stack.pop() | 0;
@@ -774,7 +777,7 @@ class PostScriptEvaluator {
           break;
         case "sin":
           a = stack.pop();
-          stack.push(Math.sin(a));
+          stack.push(Math.sin(((a % 360) / 180) * Math.PI));
           break;
         case "sqrt":
           a = stack.pop();

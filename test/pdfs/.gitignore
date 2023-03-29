@@ -118,6 +118,7 @@
 !issue6127.pdf
 !issue7891_bc0.pdf
 !issue11242_reduced.pdf
+!issue16176.pdf
 !issue11279.pdf
 !issue11362.pdf
 !issue13325_reduced.pdf
@@ -273,6 +274,7 @@
 !issue13316_reduced.pdf
 !issue15977_reduced.pdf
 !issue4575.pdf
+!colorspace_atan.pdf
 !bug1011159.pdf
 !issue5734.pdf
 !issue4875.pdf
@@ -294,6 +296,7 @@
 !find_all.pdf
 !helloworld-bad.pdf
 !zerowidthline.pdf
+!colorspace_cos.pdf
 !issue13242.pdf
 !js-colors.pdf
 !annotation-line-without-appearance-empty-Rect.pdf
@@ -423,6 +426,7 @@
 !issue5475.pdf
 !issue10519_reduced.pdf
 !annotation-border-styles.pdf
+!colorspace_sin.pdf
 !IdentityToUnicodeMap_charCodeOf.pdf
 !PDFJS-9279-reduced.pdf
 !issue5481.pdf
@@ -576,3 +580,5 @@
 !bug1770750.pdf
 !issue16063.pdf
 !issue16067.pdf
+!bug1820909.1.pdf
+!issue16221.pdf

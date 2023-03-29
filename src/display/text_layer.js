@@ -312,6 +312,7 @@ class TextLayerRenderTask {
     this._container = this._rootContainer = container;
     this._textDivs = textDivs || [];
     this._textContentItemsStr = textContentItemsStr || [];
+    this._isOffscreenCanvasSupported = isOffscreenCanvasSupported;
     this._fontInspectorEnabled = !!globalThis.FontInspector?.enabled;
 
     this._reader = null;
@@ -480,6 +481,23 @@ function renderTextLayer(params) {
         "will be removed in the future, please use `textContentSource` instead."
     );
     params.textContentSource = params.textContent || params.textContentStream;
+  }
+  if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("GENERIC && !TESTING")) {
+    const { container, viewport } = params;
+    const style = getComputedStyle(container);
+    const visibility = style.getPropertyValue("visibility");
+    const scaleFactor = parseFloat(style.getPropertyValue("--scale-factor"));
+
+    if (
+      visibility === "visible" &&
+      (!scaleFactor || Math.abs(scaleFactor - viewport.scale) > 1e-15)
+    ) {
+      console.error(
+        "The `--scale-factor` CSS-variable must be set, " +
+          "to the same value as `viewport.scale`, " +
+          "either on the `container`-element itself or higher up in the DOM."
+      );
+    }
   }
   const task = new TextLayerRenderTask(params);
   task._render();

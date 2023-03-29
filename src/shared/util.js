@@ -22,6 +22,8 @@ if (typeof PDFJSDev !== "undefined" && !globalThis._pdfjsCompatibilityChecked) {
 const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
 const FONT_IDENTITY_MATRIX = [0.001, 0, 0, 0.001, 0, 0];
 
+const MAX_IMAGE_SIZE_TO_CACHE = 10e6; // Ten megabytes.
+
 // Represent the percentage of the height of a single-line field over
 // the font size. Acrobat seems to use this value.
 const LINE_FACTOR = 1.35;
@@ -341,32 +343,6 @@ const OPS = {
   paintSolidColorImageMask: 90,
   constructPath: 91,
 };
-
-const UNSUPPORTED_FEATURES =
-  typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")
-    ? {
-        forms: "forms",
-        javaScript: "javaScript",
-        signatures: "signatures",
-        smask: "smask",
-        shadingPattern: "shadingPattern",
-        errorTilingPattern: "errorTilingPattern",
-        errorExtGState: "errorExtGState",
-        errorXObject: "errorXObject",
-        errorFontLoadType3: "errorFontLoadType3",
-        errorFontState: "errorFontState",
-        errorFontMissing: "errorFontMissing",
-        errorFontTranslate: "errorFontTranslate",
-        errorColorSpace: "errorColorSpace",
-        errorOperatorList: "errorOperatorList",
-        errorFontToUnicode: "errorFontToUnicode",
-        errorFontLoadNative: "errorFontLoadNative",
-        errorFontBuildPath: "errorFontBuildPath",
-        errorFontGetPath: "errorFontGetPath",
-        errorMarkedContent: "errorMarkedContent",
-        errorContentSubStream: "errorContentSubStream",
-      }
-    : null;
 
 const PasswordResponses = {
   NEED_PASSWORD: 1,
@@ -1082,6 +1058,7 @@ export {
   isArrayEqual,
   LINE_DESCENT_FACTOR,
   LINE_FACTOR,
+  MAX_IMAGE_SIZE_TO_CACHE,
   MissingPDFException,
   objectFromMap,
   objectSize,
@@ -1101,7 +1078,6 @@ export {
   UnexpectedResponseException,
   UnknownErrorException,
   unreachable,
-  UNSUPPORTED_FEATURES,
   utf8StringToString,
   Util,
   VerbosityLevel,

@@ -158,6 +158,10 @@ class DefaultExternalServices {
   static updateEditorStates(data) {
     throw new Error("Not implemented: updateEditorStates");
   }
+
+  static get canvasMaxAreaInBytes() {
+    return shadow(this, "canvasMaxAreaInBytes", -1);
+  }
 }
 
 let PDFViewerApplication = {
@@ -966,7 +970,11 @@ let PDFViewerApplication = {
     }
     // Set the necessary API parameters, using all the available options.
     const apiParams = AppOptions.getAll(OptionKind.API);
-    const params = { ...apiParams, ...args };
+    const params = {
+      canvasMaxAreaInBytes: this.externalServices.canvasMaxAreaInBytes,
+      ...apiParams,
+      ...args,
+    };
 
     if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("PRODUCTION")) {
       params.docBaseUrl ||= document.URL.split("#")[0];
