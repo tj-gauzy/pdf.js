@@ -178,6 +178,11 @@ const defaultOptions = {
     value: 1,
     kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
   },
+  imageLayerMode: {
+    /** @type {number} */
+    value: 1,
+    kind: OptionKind.VIEWER + OptionKind.PREFERENCE,
+  },
   useOnlyCssZoom: {
     /** @type {boolean} */
     value: false,

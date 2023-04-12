@@ -1415,6 +1415,7 @@ class PDFPageProxy {
     annotationCanvasMap = null,
     pageColors = null,
     printAnnotationStorage = null,
+    imageLayer = null,
   }) {
     if (
       (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) &&
@@ -1518,6 +1519,7 @@ class PDFPageProxy {
       useRequestAnimationFrame: !intentPrint,
       pdfBug: this._pdfBug,
       pageColors,
+      imageLayer,
     });
 
     (intentState.renderTasks ||= new Set()).add(internalRenderTask);
@@ -3260,6 +3262,7 @@ class InternalRenderTask {
     useRequestAnimationFrame = false,
     pdfBug = false,
     pageColors = null,
+    imageLayer = null,
   }) {
     this.callback = callback;
     this.params = params;
@@ -3288,6 +3291,7 @@ class InternalRenderTask {
     this._scheduleNextBound = this._scheduleNext.bind(this);
     this._nextBound = this._next.bind(this);
     this._canvas = params.canvasContext.canvas;
+    this._imageLayer = imageLayer;
   }
 
   get completed() {
@@ -3325,7 +3329,7 @@ class InternalRenderTask {
       this.objs,
       this.canvasFactory,
       this.filterFactory,
-      { optionalContentConfig },
+      { optionalContentConfig, imageLayer: this._imageLayer },
       this.annotationCanvasMap
     );
     this.gfx.beginDrawing({

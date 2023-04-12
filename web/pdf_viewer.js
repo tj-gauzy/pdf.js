@@ -39,6 +39,7 @@ import {
   DEFAULT_SCALE_VALUE,
   docStyle as docStyleOrigin,
   getVisibleElements,
+  ImageLayerMode,
   isPortraitOrientation,
   isValidRotation,
   isValidScrollMode,
@@ -257,6 +258,7 @@ class PDFViewer {
     this.findController = options.findController || null;
     this._scriptingManager = options.scriptingManager || null;
     this.textLayerMode = options.textLayerMode ?? TextLayerMode.ENABLE;
+    this.imageLayerMode = options.imageLayerMode ?? ImageLayerMode.DISABLE;
     this.#annotationMode =
       options.annotationMode ?? AnnotationMode.ENABLE_FORMS;
     this.#annotationEditorMode =
@@ -575,6 +577,7 @@ class PDFViewer {
       annotationEditorMode: this.#annotationEditorMode,
       annotationMode: this.#annotationMode,
       textLayerMode: this.textLayerMode,
+      imageLayerMode: this.imageLayerMode,
     };
     if (!permissions) {
       return params;
@@ -732,8 +735,12 @@ class PDFViewer {
         this._firstPageCapability.resolve(firstPdfPage);
         this._optionalContentConfigPromise = optionalContentConfigPromise;
 
-        const { annotationEditorMode, annotationMode, textLayerMode } =
-          this.#initializePermissions(permissions);
+        const {
+          annotationEditorMode,
+          annotationMode,
+          imageLayerMode,
+          textLayerMode,
+        } = this.#initializePermissions(permissions);
 
         if (annotationEditorMode !== AnnotationEditorType.DISABLE) {
           const mode = annotationEditorMode;
@@ -775,6 +782,7 @@ class PDFViewer {
             optionalContentConfigPromise,
             renderingQueue: this.renderingQueue,
             textLayerMode,
+            imageLayerMode,
             annotationMode,
             imageResourcesPath: this.imageResourcesPath,
             renderer:

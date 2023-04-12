@@ -36,6 +36,7 @@ import {
 import {
   approximateFraction,
   DEFAULT_SCALE,
+  ImageLayerMode,
   OutputScale,
   RendererType,
   RenderingStates,
@@ -149,6 +150,7 @@ class PDFPageView {
       options.optionalContentConfigPromise || null;
     this.hasRestrictedScaling = false;
     this.textLayerMode = options.textLayerMode ?? TextLayerMode.ENABLE;
+    this.imageLayerMode = options.imageLayerMode ?? ImageLayerMode.DISABLE;
     this.#annotationMode =
       options.annotationMode ?? AnnotationMode.ENABLE_FORMS;
     this.imageResourcesPath = options.imageResourcesPath || "";
@@ -1064,6 +1066,12 @@ class PDFPageView {
       annotationCanvasMap: this._annotationCanvasMap,
       pageColors: this.pageColors,
     };
+
+    if (this.imageLayerMode !== ImageLayerMode.DISABLE) {
+      renderContext.imageLayer = this.textLayer;
+      this.textLayer.setImageLayerMode(this.imageLayerMode);
+    }
+
     const renderTask = this.pdfPage.render(renderContext);
     renderTask.onContinue = function (cont) {
       showCanvas(false);

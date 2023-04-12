@@ -59,6 +59,13 @@ const TextLayerMode = {
   ENABLE: 1,
 };
 
+const ImageLayerMode = {
+  DISABLE: 0,
+  ENABLE: 1,
+  PLACEHOLDER: 1,
+  ORIGIN: 2,
+};
+
 const ScrollMode = {
   UNKNOWN: -1,
   VERTICAL: 0, // Default value.
@@ -875,6 +882,7 @@ export {
   getActiveOrFocusedElement,
   getPageSizeInches,
   getVisibleElements,
+  ImageLayerMode,
   isPortraitOrientation,
   isValidRotation,
   isValidScrollMode,

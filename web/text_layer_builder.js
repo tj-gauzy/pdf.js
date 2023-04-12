@@ -20,7 +20,8 @@
 // eslint-disable-next-line max-len
 /** @typedef {import("./text_accessibility.js").TextAccessibilityManager} TextAccessibilityManager */
 
-import { renderTextLayer, updateTextLayer } from "pdfjs-lib";
+import { renderTextLayer, SVGGraphics, updateTextLayer } from "pdfjs-lib";
+import { ImageLayerMode } from "./ui_utils.js";
 
 /**
  * @typedef {Object} TextLayerBuilderOptions
@@ -212,6 +213,92 @@ class TextLayerBuilder {
       }
       end.classList.remove("active");
     });
+  }
+
+  setImageLayerMode(imageLayerMode) {
+    this.imageLayerMode = imageLayerMode;
+  }
+
+  loadImage(img, imgData) {
+    return new Promise(resolve => {
+      if (img.loaded) {
+        resolve();
+        return;
+      }
+
+      img.onload = () => {
+        img.loaded = true;
+        img.onload = null;
+        resolve();
+      };
+
+      if (imgData.data) {
+        img.src = SVGGraphics.convertImgDataToPng(imgData);
+      } else if (imgData.bitmap) {
+        const { width, height } = imgData.bitmap;
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(imgData.bitmap, 0, 0);
+        img.src = canvas.toDataURL();
+      } else {
+        resolve();
+      }
+    });
+  }
+
+  appendImage(image) {
+    if (this._imageLayerRendered) {
+      return;
+    }
+    // TODO: support rotation of page
+    const { height, width, left, top, name, ctx, imgData } = image;
+
+    const paperHeight = ctx.canvas.height;
+    const paperWidth = ctx.canvas.width;
+
+    const hRatio = (100 * height) / paperHeight;
+    const wRatio = (100 * width) / paperWidth;
+    const topRatio = (100 * top) / paperHeight;
+    const leftRatio = (100 * left) / paperWidth;
+
+    const img = document.createElement("img");
+    img.classList.add("inlineImage");
+    img.setAttribute(
+      "style",
+      `position: absolute; height: ${hRatio}%; width: ${wRatio}%; top: ${topRatio}%; left: ${leftRatio}%;`
+    );
+
+    img.alt = `${name}.png`;
+    img.id = name;
+
+    img.src = `data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7`;
+
+    if (this.imageLayerMode === ImageLayerMode.PLACEHOLDER) {
+      const load = () => {
+        this.loadImage(img, imgData).then();
+
+        img.removeEventListener("pointerdown", load);
+        img.removeEventListener("contextmenu", load);
+      };
+      img.addEventListener("pointerdown", load);
+      img.addEventListener("contextmenu", load);
+    } else if (this.imageLayerMode === ImageLayerMode.ORIGIN) {
+      this.loadImage(img, imgData).then();
+    }
+
+    this._images.append(img);
+  }
+
+  beginLayout() {
+    this._images = new DocumentFragment();
+  }
+
+  endLayout() {
+    this.div.append(this._images);
+    this._images = null;
+    this._imageLayerRendered = true;
   }
 }
 

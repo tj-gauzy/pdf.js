@@ -548,6 +548,7 @@ let PDFViewerApplication = {
       maxCanvasPixels: AppOptions.get("maxCanvasPixels"),
       enablePermissions: AppOptions.get("enablePermissions"),
       pageColors,
+      imageLayerMode: AppOptions.get("imageLayerMode"),
     });
     pdfRenderingQueue.setViewer(this.pdfViewer);
     pdfLinkService.setViewer(this.pdfViewer);

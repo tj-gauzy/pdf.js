@@ -946,7 +946,7 @@ class CanvasGraphics {
     objs,
     canvasFactory,
     filterFactory,
-    { optionalContentConfig, markedContentStack = null },
+    { optionalContentConfig, markedContentStack = null, imageLayer = null },
     annotationCanvasMap
   ) {
     this.ctx = canvasCtx;
@@ -962,6 +962,7 @@ class CanvasGraphics {
     this.commonObjs = commonObjs;
     this.objs = objs;
     this.canvasFactory = canvasFactory;
+    this.imageLayer = imageLayer;
     this.filterFactory = filterFactory;
     this.groupStack = [];
     this.processingType3 = null;
@@ -1043,6 +1044,10 @@ class CanvasGraphics {
     this.viewportScale = viewport.scale;
 
     this.baseTransform = getCurrentTransform(this.ctx);
+
+    if (this.imageLayer) {
+      this.imageLayer.beginLayout();
+    }
   }
 
   executeOperatorList(
@@ -1165,6 +1170,10 @@ class CanvasGraphics {
         this.ctx.drawImage(this.ctx.canvas, 0, 0);
         this.ctx.filter = savedFilter;
       }
+    }
+
+    if (this.imageLayer) {
+      this.imageLayer.endLayout();
     }
   }
 
@@ -2886,7 +2895,7 @@ class CanvasGraphics {
       return;
     }
 
-    this.paintInlineImageXObject(imgData);
+    this.paintInlineImageXObject(imgData, objId);
   }
 
   paintImageXObjectRepeat(objId, scaleX, scaleY, positions) {
@@ -2911,7 +2920,7 @@ class CanvasGraphics {
         h: height,
       });
     }
-    this.paintInlineImageXObjectGroup(imgData, map);
+    this.paintInlineImageXObjectGroup(imgData, map, objId);
   }
 
   applyTransferMapsToCanvas(ctx) {
@@ -2941,7 +2950,7 @@ class CanvasGraphics {
     return tmpCanvas.canvas;
   }
 
-  paintInlineImageXObject(imgData) {
+  paintInlineImageXObject(imgData, objId) {
     if (!this.contentVisible) {
       return;
     }
@@ -2994,7 +3003,7 @@ class CanvasGraphics {
       imgData.interpolate
     );
 
-    drawImageAtIntegerCoords(
+    const [rWidth, rHeight] = drawImageAtIntegerCoords(
       ctx,
       scaled.img,
       0,
@@ -3006,11 +3015,27 @@ class CanvasGraphics {
       width,
       height
     );
+
+    if (this.imageLayer) {
+      const [left, top] = Util.applyTransform(
+        [0, -height],
+        getCurrentTransform(this.ctx)
+      );
+      this.imageLayer.appendImage({
+        imgData,
+        left,
+        top,
+        width: rWidth,
+        height: rHeight,
+        name: objId,
+        ctx,
+      });
+    }
     this.compose();
     this.restore();
   }
 
-  paintInlineImageXObjectGroup(imgData, map) {
+  paintInlineImageXObjectGroup(imgData, map, objId) {
     if (!this.contentVisible) {
       return;
     }
@@ -3044,6 +3069,21 @@ class CanvasGraphics {
         1,
         1
       );
+      if (this.imageLayer) {
+        const [left, top] = Util.applyTransform(
+          [entry.x, entry.y],
+          getCurrentTransform(this.ctx)
+        );
+        this.imageLayer.appendImage({
+          imgData,
+          left,
+          top,
+          width: imgData.width,
+          height: imgData.height,
+          name: objId,
+          ctx,
+        });
+      }
       ctx.restore();
     }
     this.compose();
