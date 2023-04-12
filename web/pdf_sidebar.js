@@ -184,8 +184,12 @@ class PDFSidebar {
         }
         break;
       default:
-        console.error(`PDFSidebar.switchView: "${view}" is not a valid view.`);
-        return;
+        if (!Object.values(SidebarView).includes(view)) {
+          console.error(
+            `PDFSidebar.switchView: "${view}" is not a valid view.`
+          );
+          return;
+        }
     }
     // Update the active view *after* it has been validated above,
     // in order to prevent setting it to an invalid state.
