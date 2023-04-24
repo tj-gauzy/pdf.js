@@ -276,11 +276,16 @@ class TextLayerBuilder {
     img.src = `data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7`;
 
     if (this.imageLayerMode === ImageLayerMode.PLACEHOLDER) {
+      const data = structuredClone(imgData);
       const load = () => {
-        this.loadImage(img, imgData).then();
+        this.loadImage(img, data).then();
 
         img.removeEventListener("pointerdown", load);
         img.removeEventListener("contextmenu", load);
+
+        if (data.bitmap) {
+          data.bitmap.close();
+        }
       };
       img.addEventListener("pointerdown", load);
       img.addEventListener("contextmenu", load);
