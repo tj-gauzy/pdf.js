@@ -273,7 +273,7 @@ class AnnotationFactory {
             baseFont.set("Encoding", Name.get("WinAnsiEncoding"));
             const buffer = [];
             baseFontRef = xref.getNewTemporaryRef();
-            writeObject(baseFontRef, baseFont, buffer, null);
+            await writeObject(baseFontRef, baseFont, buffer, null);
             dependencies.push({ ref: baseFontRef, data: buffer.join("") });
           }
           promises.push(
@@ -797,10 +797,7 @@ class Annotation {
    * @param {Dict} borderStyle - The border style dictionary
    */
   setBorderStyle(borderStyle) {
-    if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("!PRODUCTION || TESTING")
-    ) {
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
       assert(this.rectangle, "setRectangle must have been called previously.");
     }
 
@@ -1010,7 +1007,6 @@ class Annotation {
       task,
       resources,
       includeMarkedContent: true,
-      combineTextItems: true,
       sink,
       viewBox,
     });
@@ -1063,8 +1059,7 @@ class Annotation {
    */
   reset() {
     if (
-      (typeof PDFJSDev === "undefined" ||
-        PDFJSDev.test("!PRODUCTION || TESTING")) &&
+      (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) &&
       this.appearance &&
       !this._streams.includes(this.appearance)
     ) {
@@ -1162,10 +1157,7 @@ class AnnotationBorderStyle {
    * @param {Array} rect - The annotation `Rect` entry.
    */
   setWidth(width, rect = [0, 0, 0, 0]) {
-    if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("!PRODUCTION || TESTING")
-    ) {
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
       assert(
         Array.isArray(rect) && rect.length === 4,
         "A valid `rect` parameter must be provided."
@@ -1487,7 +1479,7 @@ class MarkupAnnotation extends Annotation {
       const transform = xref.encrypt
         ? xref.encrypt.createCipherTransform(apRef.num, apRef.gen)
         : null;
-      writeObject(apRef, ap, buffer, transform);
+      await writeObject(apRef, ap, buffer, transform);
       dependencies.push({ ref: apRef, data: buffer.join("") });
     } else {
       annotationDict = this.createNewDict(annotation, xref, {});
@@ -1497,7 +1489,7 @@ class MarkupAnnotation extends Annotation {
     const transform = xref.encrypt
       ? xref.encrypt.createCipherTransform(annotationRef.num, annotationRef.gen)
       : null;
-    writeObject(annotationRef, annotationDict, buffer, transform);
+    await writeObject(annotationRef, annotationDict, buffer, transform);
 
     return { ref: annotationRef, data: buffer.join("") };
   }
@@ -1564,11 +1556,10 @@ class WidgetAnnotation extends Annotation {
 
     this.setDefaultAppearance(params);
 
-    data.hasAppearance =
-      (this._needAppearances &&
-        data.fieldValue !== undefined &&
-        data.fieldValue !== null) ||
-      data.hasAppearance;
+    data.hasAppearance ||=
+      this._needAppearances &&
+      data.fieldValue !== undefined &&
+      data.fieldValue !== null;
 
     const fieldType = getInheritableProperty({ dict, key: "FT" });
     data.fieldType = fieldType instanceof Name ? fieldType.name : null;
@@ -1704,7 +1695,8 @@ class WidgetAnnotation extends Annotation {
     if (
       renderForms &&
       !(this instanceof SignatureWidgetAnnotation) &&
-      !this.data.noHTML
+      !this.data.noHTML &&
+      !this.data.hasOwnCanvas
     ) {
       return {
         opList: new OperatorList(),
@@ -1816,7 +1808,7 @@ class WidgetAnnotation extends Annotation {
       if (!this._hasValueFromXFA && rotation === undefined) {
         return null;
       }
-      value = value || this.data.fieldValue;
+      value ||= this.data.fieldValue;
     }
 
     // Value can be an array (with choice list and multiple selections)
@@ -1930,7 +1922,7 @@ class WidgetAnnotation extends Annotation {
         appearanceDict.set("Matrix", rotationMatrix);
       }
 
-      writeObject(newRef, appearanceStream, buffer, newTransform);
+      await writeObject(newRef, appearanceStream, buffer, newTransform);
 
       changes.push(
         // data for the new AP
@@ -1945,7 +1937,7 @@ class WidgetAnnotation extends Annotation {
     }
 
     dict.set("M", `D:${getModificationDate()}`);
-    writeObject(this.ref, dict, buffer, originalTransform);
+    await writeObject(this.ref, dict, buffer, originalTransform);
 
     changes[0].data = buffer.join("");
 
@@ -2382,10 +2374,7 @@ class WidgetAnnotation extends Annotation {
    * @private
    */
   _getSaveFieldResources(xref) {
-    if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("!PRODUCTION || TESTING")
-    ) {
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
       assert(
         this.data.defaultAppearanceData,
         "Expected `_defaultAppearanceData` to have been set."
@@ -2437,6 +2426,7 @@ class TextWidgetAnnotation extends WidgetAnnotation {
   constructor(params) {
     super(params);
 
+    this.data.hasOwnCanvas = this.data.readOnly && !this.data.noHTML;
     this._hasText = true;
 
     const dict = params.dict;
@@ -2824,7 +2814,7 @@ class ButtonWidgetAnnotation extends WidgetAnnotation {
     }
 
     const buffer = [`${this.ref.num} ${this.ref.gen} obj\n`];
-    writeDict(dict, buffer, originalTransform);
+    await writeDict(dict, buffer, originalTransform);
     buffer.push("\nendobj\n");
 
     return [{ ref: this.ref, data: buffer.join(""), xfa }];
@@ -2883,7 +2873,7 @@ class ButtonWidgetAnnotation extends WidgetAnnotation {
         }
         parent.set("V", name);
         parentBuffer = [`${this.parent.num} ${this.parent.gen} obj\n`];
-        writeDict(parent, parentBuffer, parentTransform);
+        await writeDict(parent, parentBuffer, parentTransform);
         parentBuffer.push("\nendobj\n");
       } else if (this.parent instanceof Dict) {
         this.parent.set("V", name);
@@ -2907,7 +2897,7 @@ class ButtonWidgetAnnotation extends WidgetAnnotation {
     }
 
     const buffer = [`${this.ref.num} ${this.ref.gen} obj\n`];
-    writeDict(dict, buffer, originalTransform);
+    await writeDict(dict, buffer, originalTransform);
     buffer.push("\nendobj\n");
 
     const newRefs = [{ ref: this.ref, data: buffer.join(""), xfa }];
@@ -3483,7 +3473,7 @@ class LinkAnnotation extends Annotation {
     }
 
     // The color entry for a link annotation is the color of the border.
-    this.data.borderColor = this.data.borderColor || this.data.color;
+    this.data.borderColor ||= this.data.color;
 
     Catalog.parseDestDictionary({
       destDict: params.dict,
@@ -4240,15 +4230,16 @@ class UnderlineAnnotation extends MarkupAnnotation {
           : [0, 0, 0];
         const strokeAlpha = dict.get("CA");
 
+        // The values 0.571 and 1.3 below corresponds to what Acrobat is doing.
         this._setDefaultAppearance({
           xref,
-          extra: "[] 0 d 1 w",
+          extra: "[] 0 d 0.571 w",
           strokeColor,
           strokeAlpha,
           pointsCallback: (buffer, points) => {
             buffer.push(
-              `${points[2].x} ${points[2].y} m`,
-              `${points[3].x} ${points[3].y} l`,
+              `${points[2].x} ${points[2].y + 1.3} m`,
+              `${points[3].x} ${points[3].y + 1.3} l`,
               "S"
             );
             return [points[0].x, points[1].x, points[3].y, points[1].y];

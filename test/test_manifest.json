@@ -41,6 +41,15 @@
        "lastPage": 2,
        "type": "eq"
     },
+    {  "id": "issue16395",
+       "file": "pdfs/issue16395.pdf",
+       "md5": "a5de985711ec27cd2a2ed97d5f1c536c",
+       "rounds": 1,
+       "link": true,
+       "firstPage": 3,
+       "lastPage": 3,
+       "type": "eq"
+    },
     {  "id": "tracemonkey-fbf",
        "file": "pdfs/tracemonkey.pdf",
        "md5": "9a192d8b1a7dc652a19835f6f08098bd",
@@ -4721,6 +4730,12 @@
        "link": false,
        "type": "eq"
     },
+    {  "id": "issue16263",
+       "file": "pdfs/issue16263.pdf",
+       "md5": "93c3e7884f1f2d072442898127e0a6fd",
+       "rounds": 1,
+       "type": "eq"
+    },
     {  "id": "issue2006",
       "file": "pdfs/issue2006.pdf",
       "md5": "71ec73831ece9b508ad20efa6ff28642",
@@ -5399,6 +5414,12 @@
        "rounds": 1,
        "link": true,
        "enableXfa": true,
+       "type": "eq"
+    },
+    {  "id": "issue14165",
+       "file": "pdfs/issue14165.pdf",
+       "md5": "917850af2a387475b34b00010200897d",
+       "rounds": 1,
        "type": "eq"
     },
     {  "id": "scorecard_reduced",
@@ -6275,6 +6296,12 @@
            "value": true
          }
        }
+    },
+    {  "id": "issue10572",
+       "file": "pdfs/issue10572.pdf",
+       "md5": "48ad69ed106338b3c6845fc7101488b2",
+       "rounds": 1,
+       "type": "eq"
     },
     {  "id": "issue11931",
        "file": "pdfs/issue11931.pdf",
@@ -7517,5 +7544,55 @@
       "md5": "62d93c9b3aa4ba3af5446504632e78a5",
       "rounds": 1,
       "type": "text"
+   },
+   {
+      "id": "issue16224-text",
+      "file": "pdfs/issue16224.pdf",
+      "md5": "1aa34fbb2154f9a647c7fa9e90db0eff",
+      "rounds": 1,
+      "type": "text"
+   },
+   {
+      "id": "annotation-fileattachment-forced-colors-eq",
+      "file": "pdfs/annotation-fileattachment.pdf",
+      "md5": "d20ecee4b53c81b2dd44c8715a1b4a83",
+      "rounds": 1,
+      "pageColors": {
+         "background": "black",
+         "foreground": "#00FF00"
+      },
+      "annotations": true,
+      "type": "eq"
+   },
+   {
+      "id": "issue16384",
+      "file": "pdfs/issue16384.pdf",
+      "md5": "2a4695a9ce6243832a06e989f1dc6599",
+      "rounds": 1,
+      "link": true,
+      "forms": true,
+      "type": "eq"
+   },
+   {
+      "id": "issue14565",
+      "file": "pdfs/issue14565.pdf",
+      "md5": "ee0b064d227fe90a4795ff0c4dd0a47c",
+      "rounds": 1,
+      "annotations": true,
+      "type": "eq"
+   },
+   {
+      "id": "multiline_compress",
+      "file": "pdfs/multiline.pdf",
+      "md5": "4727c7d1e4e5c7d45fded8ab7a2e05e5",
+      "rounds": 1,
+      "type": "eq",
+      "save": true,
+      "print": true,
+      "annotationStorage": {
+         "24R": {
+            "value": "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz\nabcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz"
+         }
+      }
    }
 ]

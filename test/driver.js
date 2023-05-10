@@ -17,10 +17,10 @@
 const {
   AnnotationLayer,
   AnnotationMode,
-  createPromiseCapability,
   getDocument,
   GlobalWorkerOptions,
   PixelsPerInch,
+  PromiseCapability,
   renderTextLayer,
   shadow,
   XfaLayer,
@@ -693,6 +693,7 @@ class Driver {
               initPromise = page
                 .getTextContent({
                   includeMarkedContent: true,
+                  disableNormalization: true,
                 })
                 .then(function (textContent) {
                   return Rasterize.textLayer(
@@ -921,7 +922,7 @@ class Driver {
   }
 
   _send(url, message) {
-    const capability = createPromiseCapability();
+    const capability = new PromiseCapability();
     this.inflight.textContent = this.inFlightRequests++;
 
     fetch(url, {

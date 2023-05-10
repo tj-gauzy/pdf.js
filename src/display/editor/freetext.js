@@ -90,10 +90,7 @@ class FreeTextEditor extends AnnotationEditor {
     }
     const style = getComputedStyle(documentElement);
 
-    if (
-      typeof PDFJSDev === "undefined" ||
-      PDFJSDev.test("!PRODUCTION || TESTING")
-    ) {
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
       const lineHeight = parseFloat(
         style.getPropertyValue("--freetext-line-height")
       );
