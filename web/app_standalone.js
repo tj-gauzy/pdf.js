@@ -8,9 +8,9 @@ import { AppOption } from "./app_options_standalone.js";
 import { DownloadManager as BaseDownloadManager } from "./download_manager.js";
 import { BasePreferences } from "./preferences.js";
 import { ViewHistory as BaseViewHistory } from "./view_history.js";
-import { createPromiseCapability } from "pdfjs-lib";
 import { GenericScripting } from "./generic_scripting.js";
 import { PDFViewer } from "./pdf_viewer.js";
+import { PromiseCapability } from "pdfjs-lib";
 
 // #region PDFAPP
 
@@ -27,7 +27,7 @@ function App(config) {
     ...params
   } = config || {};
 
-  this._initializedCapability = createPromiseCapability();
+  this._initializedCapability = new PromiseCapability();
   this.appConfig = appConfig || genAppConfig(document);
   this.appOptions = new AppOption();
 
@@ -357,7 +357,7 @@ class Preferences extends BasePreferences {
 
     const readStoragePromise = this.initializedPromise;
 
-    this.initializedPromise = createPromiseCapability();
+    this.initializedPromise = new PromiseCapability();
 
     this.app = app || {};
 
