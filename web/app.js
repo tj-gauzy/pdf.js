@@ -72,7 +72,6 @@ import { PDFPresentationMode } from "web-pdf_presentation_mode";
 import { PDFRenderingQueue } from "./pdf_rendering_queue.js";
 import { PDFScriptingManager } from "./pdf_scripting_manager.js";
 import { PDFSidebar } from "web-pdf_sidebar";
-import { PDFSidebarResizer } from "web-pdf_sidebar_resizer";
 import { PDFThumbnailViewer } from "web-pdf_thumbnail_viewer";
 import { PDFViewer } from "./pdf_viewer.js";
 import { SecondaryToolbar } from "web-secondary_toolbar";
@@ -161,6 +160,10 @@ class DefaultExternalServices {
   static get canvasMaxAreaInBytes() {
     return shadow(this, "canvasMaxAreaInBytes", -1);
   }
+
+  static getNimbusExperimentData() {
+    return shadow(this, "getNimbusExperimentData", Promise.resolve(null));
+  }
 }
 
 let PDFViewerApplication = {
@@ -186,8 +189,6 @@ let PDFViewerApplication = {
   pdfHistory: null,
   /** @type {PDFSidebar} */
   pdfSidebar: null,
-  /** @type {PDFSidebarResizer} */
-  pdfSidebarResizer: null,
   /** @type {PDFOutlineViewer} */
   pdfOutlineViewer: null,
   /** @type {PDFAttachmentViewer} */
@@ -239,6 +240,7 @@ let PDFViewerApplication = {
   _printAnnotationStoragePromise: null,
   _touchInfo: null,
   _isCtrlKeyDown: false,
+  _nimbusDataPromise: null,
 
   // Called once when the document is loaded.
   async initialize(appConfig) {
@@ -248,6 +250,14 @@ let PDFViewerApplication = {
       appConfig = this.appConfig;
     }
     this.preferences = this.externalServices.createPreferences({app: this});
+
+    if (
+      typeof PDFJSDev === "undefined"
+        ? window.isGECKOVIEW
+        : PDFJSDev.test("GECKOVIEW")
+    ) {
+      this._nimbusDataPromise = this.externalServices.getNimbusExperimentData();
+    }
 
     await this._initializeOptions();
     this._forceCssTheme();
@@ -608,7 +618,13 @@ let PDFViewerApplication = {
           : PDFJSDev.test("GECKOVIEW")
       ) {
         if (AppOptions.get("enableFloatingToolbar")) {
-          this.toolbar = new Toolbar(appConfig.toolbar, eventBus, this.l10n);
+          this.toolbar = new Toolbar(
+            appConfig.toolbar,
+            eventBus,
+            this.l10n,
+            await this._nimbusDataPromise,
+            this.externalServices
+          );
         }
       } else {
         this.toolbar = new Toolbar(appConfig.toolbar, eventBus, this.l10n);
@@ -677,12 +693,6 @@ let PDFViewerApplication = {
         l10n: this.l10n,
       });
       this.pdfSidebar.onToggled = this.forceRendering.bind(this);
-
-      this.pdfSidebarResizer = new PDFSidebarResizer(
-        appConfig.sidebarResizer,
-        eventBus,
-        this.l10n
-      );
     }
   },
 
@@ -2334,8 +2344,8 @@ function webViewerPageRendered({ pageNumber, error }) {
     const thumbnailView = PDFViewerApplication.pdfThumbnailViewer?.getThumbnail(
       /* index = */ pageNumber - 1
     );
-    if (pageView && thumbnailView) {
-      thumbnailView.setImage(pageView);
+    if (pageView) {
+      thumbnailView?.setImage(pageView);
     }
   }
 

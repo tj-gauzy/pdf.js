@@ -861,6 +861,13 @@ function toggleCheckedBtn(button, toggle, view = null) {
   view?.classList.toggle("hidden", !toggle);
 }
 
+function toggleExpandedBtn(button, toggle, view = null) {
+  button.classList.toggle("toggled", toggle);
+  button.setAttribute("aria-expanded", toggle);
+
+  view?.classList.toggle("hidden", !toggle);
+}
+
 /**
  * add support for multiple instances of pdf.js on the same page
  * set docStyle targets for difference pdf.js instance
@@ -913,6 +920,7 @@ export {
   SpreadMode,
   TextLayerMode,
   toggleCheckedBtn,
+  toggleExpandedBtn,
   UNKNOWN_SCALE,
   VERTICAL_PADDING,
   watchScroll,

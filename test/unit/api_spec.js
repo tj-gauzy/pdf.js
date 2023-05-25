@@ -344,7 +344,7 @@ describe("api", function () {
         function () {
           // Shouldn't get here.
           expect(false).toEqual(true);
-          return Promise.reject(new Error("loadingTask should be rejected"));
+          throw new Error("loadingTask should be rejected");
         },
         function (data) {
           expect(data instanceof PasswordException).toEqual(true);
@@ -366,7 +366,7 @@ describe("api", function () {
         function () {
           // Shouldn't get here.
           expect(false).toEqual(true);
-          return Promise.reject(new Error("loadingTask should be rejected"));
+          throw new Error("loadingTask should be rejected");
         },
         function (data) {
           expect(data instanceof PasswordException).toEqual(true);
@@ -427,7 +427,7 @@ describe("api", function () {
           function () {
             // Shouldn't get here.
             expect(false).toEqual(true);
-            return Promise.reject(new Error("loadingTask should be rejected"));
+            throw new Error("loadingTask should be rejected");
           },
           function (reason) {
             expect(reason instanceof PasswordException).toEqual(true);
@@ -447,7 +447,7 @@ describe("api", function () {
           function () {
             // Shouldn't get here.
             expect(false).toEqual(true);
-            return Promise.reject(new Error("loadingTask should be rejected"));
+            throw new Error("loadingTask should be rejected");
           },
           function (reason) {
             expect(reason instanceof PasswordException).toEqual(true);
@@ -2682,6 +2682,43 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
       await loadingTask.destroy();
     });
 
+    it("check that a chunk is pushed when font is restored", async function () {
+      const loadingTask = getDocument(buildGetDocumentParams("issue14755.pdf"));
+      const pdfDoc = await loadingTask.promise;
+      const pdfPage = await pdfDoc.getPage(1);
+      const { items } = await pdfPage.getTextContent({
+        disableNormalization: true,
+      });
+      expect(items).toEqual([
+        jasmine.objectContaining({
+          str: "ABC",
+          dir: "ltr",
+          width: 20.56,
+          height: 10,
+          transform: [10, 0, 0, 10, 100, 100],
+          hasEOL: false,
+        }),
+        jasmine.objectContaining({
+          str: "DEF",
+          dir: "ltr",
+          width: 20,
+          height: 10,
+          transform: [10, 0, 0, 10, 120, 100],
+          hasEOL: false,
+        }),
+        jasmine.objectContaining({
+          str: "GHI",
+          dir: "ltr",
+          width: 17.78,
+          height: 10,
+          transform: [10, 0, 0, 10, 140, 100],
+          hasEOL: false,
+        }),
+      ]);
+      expect(items[0].fontName).toEqual(items[2].fontName);
+      expect(items[1].fontName).not.toEqual(items[0].fontName);
+    });
+
     it("gets empty structure tree", async function () {
       const tree = await page.getStructTree();
 
@@ -2708,7 +2745,7 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
                 children: [
                   {
                     role: "NonStruct",
-                    children: [{ type: "content", id: "page2R_mcid0" }],
+                    children: [{ type: "content", id: "p2R_mc0" }],
                   },
                 ],
               },
@@ -2717,7 +2754,7 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
                 children: [
                   {
                     role: "NonStruct",
-                    children: [{ type: "content", id: "page2R_mcid1" }],
+                    children: [{ type: "content", id: "p2R_mc1" }],
                   },
                 ],
               },
@@ -2726,7 +2763,7 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
                 children: [
                   {
                     role: "NonStruct",
-                    children: [{ type: "content", id: "page2R_mcid2" }],
+                    children: [{ type: "content", id: "p2R_mc2" }],
                   },
                 ],
               },
@@ -2735,7 +2772,7 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
                 children: [
                   {
                     role: "NonStruct",
-                    children: [{ type: "content", id: "page2R_mcid3" }],
+                    children: [{ type: "content", id: "p2R_mc3" }],
                   },
                 ],
               },

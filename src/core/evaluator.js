@@ -68,6 +68,7 @@ import { bidi } from "./bidi.js";
 import { ColorSpace } from "./colorspace.js";
 import { DecodeStream } from "./decode_stream.js";
 import { FontFlags } from "./fonts_utils.js";
+import { getFontSubstitution } from "./font_substitutions.js";
 import { getGlyphsUnicode } from "./glyphlist.js";
 import { getLookupTableFactory } from "./core_utils.js";
 import { getMetrics } from "./metrics.js";
@@ -171,11 +172,7 @@ function normalizeBlendMode(value, parsingArray = false) {
 }
 
 function incrementCachedImageMaskCount(data) {
-  if (
-    data.fn === OPS.paintImageMaskXObject &&
-    data.args[0] &&
-    data.args[0].count > 0
-  ) {
+  if (data.fn === OPS.paintImageMaskXObject && data.args[0]?.count > 0) {
     data.args[0].count++;
   }
 }
@@ -214,6 +211,7 @@ class PartialEvaluator {
     builtInCMapCache,
     standardFontDataCache,
     globalImageCache,
+    systemFontCache,
     options = null,
   }) {
     this.xref = xref;
@@ -224,6 +222,7 @@ class PartialEvaluator {
     this.builtInCMapCache = builtInCMapCache;
     this.standardFontDataCache = standardFontDataCache;
     this.globalImageCache = globalImageCache;
+    this.systemFontCache = systemFontCache;
     this.options = options || DefaultPartialEvaluatorOptions;
     this.parsingType3Font = false;
 
@@ -514,7 +513,7 @@ class PartialEvaluator {
         }
       }
 
-      if (smask && smask.backdrop) {
+      if (smask?.backdrop) {
         colorSpace ||= ColorSpace.singletons.rgb;
         smask.backdrop = colorSpace.getRgb(smask.backdrop, 0);
       }
@@ -620,7 +619,7 @@ class PartialEvaluator {
           width: w,
           height: h,
           imageIsFromDecodeStream: image instanceof DecodeStream,
-          inverseDecode: !!decode && decode[0] > 0,
+          inverseDecode: decode?.[0] > 0,
           interpolate,
         });
 
@@ -657,7 +656,7 @@ class PartialEvaluator {
         width: w,
         height: h,
         imageIsFromDecodeStream: image instanceof DecodeStream,
-        inverseDecode: !!decode && decode[0] > 0,
+        inverseDecode: decode?.[0] > 0,
         interpolate,
         isOffscreenCanvasSupported: this.options.isOffscreenCanvasSupported,
       });
@@ -988,8 +987,7 @@ class PartialEvaluator {
     fallbackFontDict = null,
     cssFontInfo = null
   ) {
-    const fontName =
-      fontArgs && fontArgs[0] instanceof Name ? fontArgs[0].name : null;
+    const fontName = fontArgs?.[0] instanceof Name ? fontArgs[0].name : null;
 
     return this.loadFont(
       fontName,
@@ -1195,7 +1193,6 @@ class PartialEvaluator {
       });
     };
 
-    const xref = this.xref;
     let fontRef;
     if (font) {
       // Loading by ref.
@@ -1209,37 +1206,30 @@ class PartialEvaluator {
         fontRef = fontRes.getRaw(fontName);
       }
     }
-    if (!fontRef) {
-      const partialMsg = `Font "${
-        fontName || (font && font.toString())
-      }" is not available`;
-
-      if (!this.options.ignoreErrors && !this.parsingType3Font) {
-        warn(`${partialMsg}.`);
+    if (fontRef) {
+      if (this.parsingType3Font && this.type3FontRefs.has(fontRef)) {
         return errorFont();
       }
-      warn(`${partialMsg} -- attempting to fallback to a default font.`);
+
+      if (this.fontCache.has(fontRef)) {
+        return this.fontCache.get(fontRef);
+      }
+
+      font = this.xref.fetchIfRef(fontRef);
+    }
+
+    if (!(font instanceof Dict)) {
+      if (!this.options.ignoreErrors && !this.parsingType3Font) {
+        warn(`Font "${fontName}" is not available.`);
+        return errorFont();
+      }
+      warn(
+        `Font "${fontName}" is not available -- attempting to fallback to a default font.`
+      );
 
       // Falling back to a default font to avoid completely broken rendering,
       // but note that there're no guarantees that things will look "correct".
-      if (fallbackFontDict) {
-        fontRef = fallbackFontDict;
-      } else {
-        fontRef = PartialEvaluator.fallbackFontDict;
-      }
-    }
-
-    if (this.parsingType3Font && this.type3FontRefs.has(fontRef)) {
-      return errorFont();
-    }
-
-    if (this.fontCache.has(fontRef)) {
-      return this.fontCache.get(fontRef);
-    }
-
-    font = xref.fetchIfRef(fontRef);
-    if (!(font instanceof Dict)) {
-      return errorFont();
+      font = fallbackFontDict || PartialEvaluator.fallbackFontDict;
     }
 
     // We are holding `font.cacheKey` references only for `fontRef`s that
@@ -1262,9 +1252,6 @@ class PartialEvaluator {
 
     const fontRefIsRef = fontRef instanceof Ref;
     let fontID;
-    if (fontRefIsRef) {
-      fontID = `f${fontRef.toString()}`;
-    }
 
     if (hash && descriptor instanceof Dict) {
       const fontAliases = (descriptor.fontAliases ||= Object.create(null));
@@ -1285,7 +1272,13 @@ class PartialEvaluator {
         fontAliases[hash].aliasRef = fontRef;
       }
       fontID = fontAliases[hash].fontID;
+    } else {
+      fontID = this.idFactory.createFontId();
     }
+    assert(
+      fontID?.startsWith("f"),
+      'The "fontID" must be (correctly) defined.'
+    );
 
     // Workaround for bad PDF generators that reference fonts incorrectly,
     // where `fontRef` is a `Dict` rather than a `Ref` (fixes bug946506.pdf).
@@ -1305,16 +1298,9 @@ class PartialEvaluator {
     if (fontRefIsRef) {
       this.fontCache.put(fontRef, fontCapability.promise);
     } else {
-      if (!fontID) {
-        fontID = this.idFactory.createFontId();
-      }
       font.cacheKey = `cacheKey_${fontID}`;
       this.fontCache.put(font.cacheKey, fontCapability.promise);
     }
-    assert(
-      fontID && fontID.startsWith("f"),
-      'The "fontID" must be (correctly) defined.'
-    );
 
     // Keep track of each font we translated so the caller can
     // load them asynchronously before calling display on a page.
@@ -2573,7 +2559,7 @@ class PartialEvaluator {
       let posY = currentTransform[5];
 
       // Check if the glyph is in the viewbox.
-      if (textState.font && textState.font.vertical) {
+      if (textState.font?.vertical) {
         if (
           posX < viewBox[0] ||
           posX > viewBox[2] ||
@@ -3005,6 +2991,8 @@ class PartialEvaluator {
         if (!preprocessor.read(operation)) {
           break;
         }
+
+        const previousState = textState;
         textState = stateManager.state;
         const fn = operation.fn;
         args = operation.args;
@@ -3086,7 +3074,7 @@ class PartialEvaluator {
             const spaceFactor =
               ((textState.font.vertical ? 1 : -1) * textState.fontSize) / 1000;
             const elements = args[0];
-            for (let i = 0, ii = elements.length; i < ii - 1; i++) {
+            for (let i = 0, ii = elements.length; i < ii; i++) {
               const item = elements[i];
               if (typeof item === "string") {
                 showSpacedTextBuffer.push(item);
@@ -3106,11 +3094,6 @@ class PartialEvaluator {
                   extraSpacing: item * spaceFactor,
                 });
               }
-            }
-
-            const item = elements.at(-1);
-            if (typeof item === "string") {
-              showSpacedTextBuffer.push(item);
             }
 
             if (showSpacedTextBuffer.length > 0) {
@@ -3355,7 +3338,7 @@ class PartialEvaluator {
               textContent.items.push({
                 type: "beginMarkedContentProps",
                 id: Number.isInteger(mcid)
-                  ? `${self.idFactory.getPageObjId()}_mcid${mcid}`
+                  ? `${self.idFactory.getPageObjId()}_mc${mcid}`
                   : null,
                 tag: args[0] instanceof Name ? args[0].name : null,
               });
@@ -3374,6 +3357,16 @@ class PartialEvaluator {
               textContent.items.push({
                 type: "endMarkedContent",
               });
+            }
+            break;
+          case OPS.restore:
+            if (
+              previousState &&
+              (previousState.font !== textState.font ||
+                previousState.fontSize !== textState.fontSize ||
+                previousState.fontName !== textState.fontName)
+            ) {
+              flushTextContentItem();
             }
             break;
         } // switch
@@ -3494,6 +3487,17 @@ class PartialEvaluator {
       }
     }
 
+    const nonEmbeddedFont = !properties.file || properties.isInternalFont;
+    // Ignore an incorrectly specified named encoding for non-embedded
+    // symbol fonts (fixes issue16464.pdf).
+    if (
+      baseEncodingName &&
+      nonEmbeddedFont &&
+      getSymbolsFonts()[properties.name]
+    ) {
+      baseEncodingName = null;
+    }
+
     if (baseEncodingName) {
       properties.defaultEncoding = getEncoding(baseEncodingName);
     } else {
@@ -3510,11 +3514,13 @@ class PartialEvaluator {
       // Heuristic: we have to check if the font is a standard one also
       if (isSymbolicFont) {
         encoding = MacRomanEncoding;
-        if (!properties.file || properties.isInternalFont) {
+        if (nonEmbeddedFont) {
           if (/Symbol/i.test(properties.name)) {
             encoding = SymbolSetEncoding;
-          } else if (/Dingbats|Wingdings/i.test(properties.name)) {
+          } else if (/Dingbats/i.test(properties.name)) {
             encoding = ZapfDingbatsEncoding;
+          } else if (/Wingdings/i.test(properties.name)) {
+            encoding = WinAnsiEncoding;
           }
         }
       }
@@ -3659,8 +3665,7 @@ class PartialEvaluator {
    *   {ToUnicodeMap|IdentityToUnicodeMap} object.
    */
   async buildToUnicode(properties) {
-    properties.hasIncludedToUnicodeMap =
-      !!properties.toUnicode && properties.toUnicode.length > 0;
+    properties.hasIncludedToUnicodeMap = properties.toUnicode?.length > 0;
 
     // Section 9.10.2 Mapping Character Codes to Unicode Values
     if (properties.hasIncludedToUnicodeMap) {
@@ -3918,6 +3923,9 @@ class PartialEvaluator {
     }
     if (isMonospace) {
       properties.flags |= FontFlags.FixedPitch;
+    } else {
+      // Clear the flag.
+      properties.flags &= ~FontFlags.FixedPitch;
     }
 
     properties.defaultWidth = defaultWidth;
@@ -4174,6 +4182,7 @@ class PartialEvaluator {
           type,
           name: baseFontName,
           loadedName: baseDict.loadedName,
+          systemFontInfo: null,
           widths: metrics.widths,
           defaultWidth: metrics.defaultWidth,
           isSimulatedFlags: true,
@@ -4193,6 +4202,15 @@ class PartialEvaluator {
         if (standardFontName) {
           file = await this.fetchStandardFontData(standardFontName);
           properties.isInternalFont = !!file;
+        }
+        if (!properties.isInternalFont && this.options.useSystemFonts) {
+          properties.systemFontInfo = getFontSubstitution(
+            this.systemFontCache,
+            this.idFactory,
+            this.options.standardFontDataUrl,
+            baseFontName,
+            standardFontName
+          );
         }
         return this.extractDataStructures(dict, dict, properties).then(
           newProperties => {
@@ -4232,8 +4250,8 @@ class PartialEvaluator {
     }
 
     if (!isType3Font) {
-      const fontNameStr = fontName && fontName.name;
-      const baseFontStr = baseFont && baseFont.name;
+      const fontNameStr = fontName?.name;
+      const baseFontStr = baseFont?.name;
       if (fontNameStr !== baseFontStr) {
         info(
           `The FontDescriptor's FontName is "${fontNameStr}" but ` +
@@ -4241,7 +4259,7 @@ class PartialEvaluator {
         );
         // Workaround for cases where e.g. fontNameStr = 'Arial' and
         // baseFontStr = 'Arial,Bold' (needed when no font file is embedded).
-        if (fontNameStr && baseFontStr && baseFontStr.startsWith(fontNameStr)) {
+        if (fontNameStr && baseFontStr?.startsWith(fontNameStr)) {
           fontName = baseFont;
         }
       }
@@ -4264,6 +4282,7 @@ class PartialEvaluator {
     }
     let isInternalFont = false;
     let glyphScaleFactors = null;
+    let systemFontInfo = null;
     if (fontFile) {
       if (fontFile.dict) {
         const subtypeEntry = fontFile.dict.get("Subtype");
@@ -4297,6 +4316,15 @@ class PartialEvaluator {
         fontFile = await this.fetchStandardFontData(standardFontName);
         isInternalFont = !!fontFile;
       }
+      if (!isInternalFont && this.options.useSystemFonts) {
+        systemFontInfo = getFontSubstitution(
+          this.systemFontCache,
+          this.idFactory,
+          this.options.standardFontDataUrl,
+          fontName.name,
+          standardFontName
+        );
+      }
     }
 
     properties = {
@@ -4325,6 +4353,7 @@ class PartialEvaluator {
       isType3Font,
       cssFontInfo,
       scaleFactors: glyphScaleFactors,
+      systemFontInfo,
     };
 
     if (composite) {
@@ -4377,7 +4406,7 @@ class PartialEvaluator {
       // If the glyph has an accent we need to build a path for its
       // fontChar too, otherwise CanvasGraphics_paintChar will fail.
       const accent = glyph.accent;
-      if (accent && accent.fontChar) {
+      if (accent?.fontChar) {
         buildPath(accent.fontChar);
       }
     }
@@ -4385,7 +4414,7 @@ class PartialEvaluator {
 
   static get fallbackFontDict() {
     const dict = new Dict();
-    dict.set("BaseFont", Name.get("PDFJS-FallbackFont"));
+    dict.set("BaseFont", Name.get("Helvetica"));
     dict.set("Type", Name.get("FallbackType"));
     dict.set("Subtype", Name.get("FallbackType"));
     dict.set("Encoding", Name.get("WinAnsiEncoding"));
