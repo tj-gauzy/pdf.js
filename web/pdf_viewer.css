@@ -197,7 +197,3 @@
   margin: 0 auto;
   border: 2px solid transparent;
 }
-
-.pdfViewer .textLayer span[role="presentation"] {
-  height: 2em;
-}
