@@ -168,7 +168,7 @@ describe("api", function () {
 
         // Shouldn't get here.
         expect(false).toEqual(true);
-      } catch (reason) {
+      } catch {
         expect(true).toEqual(true);
         await destroyed;
       }
@@ -1491,6 +1491,22 @@ describe("api", function () {
       await loadingTask.destroy();
     });
 
+    it("check field object for group of buttons", async function () {
+      if (isNodeJS) {
+        pending("Linked test-cases are not supported in Node.js.");
+      }
+
+      const loadingTask = getDocument(buildGetDocumentParams("f1040_2022.pdf"));
+      const pdfDoc = await loadingTask.promise;
+      const fieldObjects = await pdfDoc.getFieldObjects();
+
+      expect(
+        fieldObjects["topmostSubform[0].Page1[0].c1_01"].map(o => o.id)
+      ).toEqual(["1566R", "1568R", "1569R", "1570R", "1571R"]);
+
+      await loadingTask.destroy();
+    });
+
     it("gets non-existent calculationOrder", async function () {
       const calculationOrder = await pdfDocument.getCalculationOrderIds();
       expect(calculationOrder).toEqual(null);
@@ -1979,7 +1995,7 @@ describe("api", function () {
       await loadingTask.destroy();
     });
 
-    it("write a a new annotation, save the pdf and check that the prev entry in xref stream is correct", async function () {
+    it("write a new annotation, save the pdf and check that the prev entry in xref stream is correct", async function () {
       if (isNodeJS) {
         pending("Linked test-cases are not supported in Node.js.");
       }
@@ -2004,6 +2020,116 @@ describe("api", function () {
       const xrefPrev = await pdfDoc.getXRefPrevValue();
 
       expect(xrefPrev).toEqual(143954);
+
+      await loadingTask.destroy();
+    });
+
+    it("edit and write an existing annotation, save the pdf and check that the Annot array doesn't contain dup entries", async function () {
+      let loadingTask = getDocument(buildGetDocumentParams("issue14438.pdf"));
+      let pdfDoc = await loadingTask.promise;
+      pdfDoc.annotationStorage.setValue("pdfjs_internal_editor_0", {
+        annotationType: AnnotationEditorType.FREETEXT,
+        rect: [12, 34, 56, 78],
+        rotation: 0,
+        fontSize: 10,
+        color: [0, 0, 0],
+        value: "Hello PDF.js World!",
+        pageIndex: 0,
+        id: "10R",
+      });
+      pdfDoc.annotationStorage.setValue("pdfjs_internal_editor_1", {
+        annotationType: AnnotationEditorType.FREETEXT,
+        rect: [12, 34, 56, 78],
+        rotation: 0,
+        fontSize: 10,
+        color: [0, 0, 0],
+        value: "Hello PDF.js World!",
+        pageIndex: 0,
+      });
+
+      const data = await pdfDoc.saveDocument();
+      await loadingTask.destroy();
+
+      loadingTask = getDocument(data);
+      pdfDoc = await loadingTask.promise;
+      const annotations = await pdfDoc.getAnnotArray(0);
+
+      expect(annotations).toEqual([
+        "4R",
+        "10R",
+        "17R",
+        "20R",
+        "21R",
+        "22R",
+        "25R",
+        "28R",
+        "29R",
+        "30R",
+        "33R",
+        "36R",
+        "37R",
+        "42R",
+        "43R",
+        "44R",
+        "47R",
+        "50R",
+        "51R",
+        "54R",
+        "55R",
+        "58R",
+        "59R",
+        "62R",
+        "63R",
+        "66R",
+        "69R",
+        "72R",
+        "75R",
+        "78R",
+        "140R",
+      ]);
+
+      await loadingTask.destroy();
+    });
+
+    it("write a new annotation, save the pdf and check that the text content is correct", async function () {
+      // This test helps to check that the text stream is correctly compressed
+      // when saving.
+      const manifesto = `
+      The Mozilla Manifesto Addendum
+      Pledge for a Healthy Internet
+      
+      The open, global internet is the most powerful communication and collaboration resource we have ever seen.
+      It embodies some of our deepest hopes for human progress.
+      It enables new opportunities for learning, building a sense of shared humanity, and solving the pressing problems
+      facing people everywhere.
+      
+      Over the last decade we have seen this promise fulfilled in many ways.
+      We have also seen the power of the internet used to magnify divisiveness,
+      incite violence, promote hatred, and intentionally manipulate fact and reality.
+      We have learned that we should more explicitly set out our aspirations for the human experience of the internet.
+      We do so now.
+      `.repeat(100);
+      let loadingTask = getDocument(buildGetDocumentParams("empty.pdf"));
+      let pdfDoc = await loadingTask.promise;
+      pdfDoc.annotationStorage.setValue("pdfjs_internal_editor_0", {
+        annotationType: AnnotationEditorType.FREETEXT,
+        rect: [10, 10, 500, 500],
+        rotation: 0,
+        fontSize: 1,
+        color: [0, 0, 0],
+        value: manifesto,
+        pageIndex: 0,
+      });
+
+      const data = await pdfDoc.saveDocument();
+      await loadingTask.destroy();
+
+      loadingTask = getDocument(data);
+      pdfDoc = await loadingTask.promise;
+      const page = await pdfDoc.getPage(1);
+      const annotations = await page.getAnnotations();
+
+      expect(annotations[0].contentsObj.str).toEqual(manifesto);
 
       await loadingTask.destroy();
     });
@@ -3075,7 +3201,6 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
       } catch (reason) {
         expect(reason instanceof RenderingCancelledException).toEqual(true);
         expect(reason.message).toEqual("Rendering cancelled, page 1");
-        expect(reason.type).toEqual("canvas");
         expect(reason.extraDelay).toEqual(0);
       }
 
@@ -3204,6 +3329,7 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
       const renderTask = pdfPage.render({
         canvasContext: canvasAndCtx.context,
         viewport,
+        background: "#FF0000", // See comment below.
       });
       expect(renderTask instanceof RenderTask).toEqual(true);
 
@@ -3225,6 +3351,11 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
       }
       await renderTask.promise;
       expect(renderTask.separateAnnots).toEqual(false);
+
+      // Use the red background-color to, more easily, tell that the page was
+      // actually rendered successfully.
+      const { data } = canvasAndCtx.context.getImageData(0, 0, 1, 1);
+      expect(data).toEqual(new Uint8ClampedArray([255, 0, 0, 255]));
 
       CanvasFactory.destroy(canvasAndCtx);
       await loadingTask.destroy();

@@ -623,7 +623,7 @@ describe("annotation", function () {
       expect(data.creationDate).toEqual("D:20180423");
       expect(data.modificationDate).toEqual("D:20190423");
       expect(data.color).toEqual(new Uint8ClampedArray([0, 0, 255]));
-      expect(data.hasPopup).toEqual(true);
+      expect(data.popupRef).toEqual("820R");
     });
 
     it("should parse IRT/RT for a reply type", async function () {
@@ -678,7 +678,7 @@ describe("annotation", function () {
       expect(data.creationDate).toEqual("D:20180523");
       expect(data.modificationDate).toEqual("D:20190523");
       expect(data.color).toEqual(new Uint8ClampedArray([102, 102, 102]));
-      expect(data.hasPopup).toEqual(false);
+      expect(data.popupRef).toEqual(null);
     });
   });
 
@@ -4293,15 +4293,15 @@ describe("annotation", function () {
       expect(base).toEqual(
         "1 0 obj\n" +
           "<< /Type /Annot /Subtype /Ink /CreationDate (date) /Rect [12 34 56 78] " +
-          "/InkList [[1 2 3 4 5 6 7 8] [91 92 93 94 95 96 97 98]] /F 4 /Border [0 0 0] " +
-          "/Rotate 0 /AP << /N 2 0 R>>>>\n" +
+          "/InkList [[1 2 3 4 5 6 7 8] [91 92 93 94 95 96 97 98]] /F 4 " +
+          "/Rotate 0 /BS << /W 1>> /C [0 0 0] /CA 1 /AP << /N 2 0 R>>>>\n" +
           "endobj\n"
       );
 
       const appearance = data.dependencies[0].data;
       expect(appearance).toEqual(
         "2 0 obj\n" +
-          "<< /FormType 1 /Subtype /Form /Type /XObject /BBox [0 0 44 44] /Length 129>> stream\n" +
+          "<< /FormType 1 /Subtype /Form /Type /XObject /BBox [12 34 56 78] /Length 129>> stream\n" +
           "1 w 1 J 1 j\n" +
           "0 G\n" +
           "10 11 m\n" +
@@ -4354,15 +4354,15 @@ describe("annotation", function () {
       expect(base).toEqual(
         "1 0 obj\n" +
           "<< /Type /Annot /Subtype /Ink /CreationDate (date) /Rect [12 34 56 78] " +
-          "/InkList [[1 2 3 4 5 6 7 8] [91 92 93 94 95 96 97 98]] /F 4 /Border [0 0 0] " +
-          "/Rotate 0 /AP << /N 2 0 R>>>>\n" +
+          "/InkList [[1 2 3 4 5 6 7 8] [91 92 93 94 95 96 97 98]] /F 4 " +
+          "/Rotate 0 /BS << /W 1>> /C [0 0 0] /CA 0.12 /AP << /N 2 0 R>>>>\n" +
           "endobj\n"
       );
 
       const appearance = data.dependencies[0].data;
       expect(appearance).toEqual(
         "2 0 obj\n" +
-          "<< /FormType 1 /Subtype /Form /Type /XObject /BBox [0 0 44 44] /Length 136 /Resources " +
+          "<< /FormType 1 /Subtype /Form /Type /XObject /BBox [12 34 56 78] /Length 136 /Resources " +
           "<< /ExtGState << /R0 << /CA 0.12 /Type /ExtGState>>>>>>>> stream\n" +
           "1 w 1 J 1 j\n" +
           "0 G\n" +

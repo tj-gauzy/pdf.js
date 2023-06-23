@@ -78,7 +78,7 @@ const config = JSON.parse(fs.readFileSync(CONFIG_FILE).toString());
 
 const ENV_TARGETS = [
   "last 2 versions",
-  "Chrome >= 88",
+  "Chrome >= 92",
   "Firefox ESR",
   "Safari >= 15.4",
   "Node >= 18",
@@ -595,7 +595,7 @@ function checkFile(filePath) {
   try {
     const stat = fs.lstatSync(filePath);
     return stat.isFile();
-  } catch (e) {
+  } catch {
     return false;
   }
 }
@@ -604,7 +604,7 @@ function checkDir(dirPath) {
   try {
     const stat = fs.lstatSync(dirPath);
     return stat.isDirectory();
-  } catch (e) {
+  } catch {
     return false;
   }
 }

@@ -463,7 +463,7 @@ let PDFViewerApplication = {
    * @private
    */
   async _initializeViewerComponents() {
-    const { appConfig, externalServices } = this;
+    const { appConfig, externalServices, l10n } = this;
 
     let eventBus = this.eventBus;
     if (!eventBus) {
@@ -524,7 +524,7 @@ let PDFViewerApplication = {
           }
         : null;
 
-    this.pdfViewer = new PDFViewer({
+    const pdfViewer = new PDFViewer({
       container,
       viewer,
       eventBus,
@@ -534,7 +534,7 @@ let PDFViewerApplication = {
       findController,
       scriptingManager:
         AppOptions.get("enableScripting") && pdfScriptingManager,
-      l10n: this.l10n,
+      l10n,
       textLayerMode: AppOptions.get("textLayerMode"),
       annotationMode: AppOptions.get("annotationMode"),
       annotationEditorMode,
@@ -547,16 +547,19 @@ let PDFViewerApplication = {
       pageColors,
       imageLayerMode: AppOptions.get("imageLayerMode"),
     });
-    pdfRenderingQueue.setViewer(this.pdfViewer);
-    pdfLinkService.setViewer(this.pdfViewer);
-    pdfScriptingManager.setViewer(this.pdfViewer);
+    this.pdfViewer = pdfViewer;
+
+    pdfRenderingQueue.setViewer(pdfViewer);
+    pdfLinkService.setViewer(pdfViewer);
+    pdfScriptingManager.setViewer(pdfViewer);
 
     if (appConfig.sidebar?.thumbnailView) {
       this.pdfThumbnailViewer = new PDFThumbnailViewer({
         container: appConfig.sidebar.thumbnailView,
+        eventBus,
         renderingQueue: pdfRenderingQueue,
         linkService: pdfLinkService,
-        l10n: this.l10n,
+        l10n,
         pageColors,
       });
       pdfRenderingQueue.setThumbnailViewer(this.pdfThumbnailViewer);
@@ -573,7 +576,7 @@ let PDFViewerApplication = {
     }
 
     if (!this.supportsIntegratedFind && appConfig.findBar) {
-      this.findBar = new PDFFindBar(appConfig.findBar, eventBus, this.l10n);
+      this.findBar = new PDFFindBar(appConfig.findBar, eventBus, l10n);
     }
 
     if (appConfig.annotationEditorParams) {
@@ -594,10 +597,8 @@ let PDFViewerApplication = {
         appConfig.documentProperties,
         this.overlayManager,
         eventBus,
-        this.l10n,
-        /* fileNameLookup = */ () => {
-          return this._docFilename;
-        }
+        l10n,
+        /* fileNameLookup = */ () => this._docFilename
       );
     }
 
@@ -621,13 +622,13 @@ let PDFViewerApplication = {
           this.toolbar = new Toolbar(
             appConfig.toolbar,
             eventBus,
-            this.l10n,
+            l10n,
             await this._nimbusDataPromise,
-            this.externalServices
+            externalServices
           );
         }
       } else {
-        this.toolbar = new Toolbar(appConfig.toolbar, eventBus, this.l10n);
+        this.toolbar = new Toolbar(appConfig.toolbar, eventBus, l10n);
       }
     }
 
@@ -635,7 +636,7 @@ let PDFViewerApplication = {
       this.secondaryToolbar = new SecondaryToolbar(
         appConfig.secondaryToolbar,
         eventBus,
-        this.externalServices
+        externalServices
       );
     }
 
@@ -645,7 +646,7 @@ let PDFViewerApplication = {
     ) {
       this.pdfPresentationMode = new PDFPresentationMode({
         container,
-        pdfViewer: this.pdfViewer,
+        pdfViewer,
         eventBus,
       });
     }
@@ -654,7 +655,7 @@ let PDFViewerApplication = {
       this.passwordPrompt = new PasswordPrompt(
         appConfig.passwordOverlay,
         this.overlayManager,
-        this.l10n,
+        l10n,
         this.isViewerEmbedded
       );
     }
@@ -680,19 +681,30 @@ let PDFViewerApplication = {
       this.pdfLayerViewer = new PDFLayerViewer({
         container: appConfig.sidebar.layersView,
         eventBus,
-        l10n: this.l10n,
+        l10n,
       });
     }
 
     if (appConfig.sidebar) {
       this.pdfSidebar = new PDFSidebar({
         elements: appConfig.sidebar,
-        pdfViewer: this.pdfViewer,
-        pdfThumbnailViewer: this.pdfThumbnailViewer,
         eventBus,
-        l10n: this.l10n,
+        l10n,
       });
       this.pdfSidebar.onToggled = this.forceRendering.bind(this);
+      this.pdfSidebar.onUpdateThumbnails = () => {
+        // Use the rendered pages to set the corresponding thumbnail images.
+        for (const pageView of pdfViewer.getCachedPageViews()) {
+          if (pageView.renderingState === RenderingStates.FINISHED) {
+            this.pdfThumbnailViewer
+              .getThumbnail(pageView.id - 1)
+              ?.setImage(pageView);
+          }
+        }
+        this.pdfThumbnailViewer.scrollThumbnailIntoView(
+          pdfViewer.currentPageNumber
+        );
+      };
     }
   },
 
@@ -825,7 +837,7 @@ let PDFViewerApplication = {
     if (!title) {
       try {
         title = decodeURIComponent(getFilenameFromUrl(url)) || url;
-      } catch (ex) {
+      } catch {
         // decodeURIComponent may throw URIError,
         // fall back to using the unprocessed url in that case
         title = url;
@@ -886,7 +898,7 @@ let PDFViewerApplication = {
       try {
         // Trigger saving, to prevent data loss in forms; see issue 12257.
         await this.save();
-      } catch (reason) {
+      } catch {
         // Ignoring errors, to ensure that document closing won't break.
       }
     }
@@ -1054,7 +1066,7 @@ let PDFViewerApplication = {
       const blob = new Blob([data], { type: "application/pdf" });
 
       await this.downloadManager.download(blob, url, filename, options);
-    } catch (reason) {
+    } catch {
       // When the PDF document isn't ready, or the PDF file is still
       // downloading, simply download using the URL.
       await this.downloadManager.downloadUrl(url, filename, options);

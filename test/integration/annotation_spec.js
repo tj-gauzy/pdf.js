@@ -120,6 +120,46 @@ describe("Checkbox annotation", () => {
       );
     });
   });
+
+  describe("f1040_2022.pdf", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait(
+        "f1040_2022.pdf",
+        "[data-annotation-id='1566R']"
+      );
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must check the checkbox", async () => {
+      await Promise.all(
+        pages.map(async ([_browserName, page]) => {
+          const selectors = [1566, 1568, 1569, 1570, 1571].map(
+            id => `[data-annotation-id='${id}R']`
+          );
+          for (const selector of selectors) {
+            await page.click(selector);
+            for (const otherSelector of selectors) {
+              if (otherSelector === selector) {
+                await page.waitForFunction(
+                  `document.querySelector("${selector} > :first-child").checked`
+                );
+              } else {
+                await page.waitForFunction(
+                  `!document.querySelector("${otherSelector} > :first-child").checked`
+                );
+              }
+            }
+            page.waitForTimeout(10);
+          }
+        })
+      );
+    });
+  });
 });
 
 describe("Text widget", () => {
@@ -147,6 +187,31 @@ describe("Text widget", () => {
 
           text = await page.$eval(getSelector("26R"), el => el.value);
           expect(text).withContext(`In ${browserName}`).toEqual(base);
+        })
+      );
+    });
+  });
+
+  describe("issue16473.pdf", () => {
+    let pages;
+
+    beforeAll(async () => {
+      pages = await loadAndWait("issue16473.pdf", "[data-annotation-id='22R']");
+    });
+
+    afterAll(async () => {
+      await closePages(pages);
+    });
+
+    it("must reset a formatted value after a change", async () => {
+      await Promise.all(
+        pages.map(async ([browserName, page]) => {
+          await page.type(getSelector("22R"), "a");
+          await page.keyboard.press("Tab");
+          await page.waitForTimeout(10);
+
+          const text = await page.$eval(getSelector("22R"), el => el.value);
+          expect(text).withContext(`In ${browserName}`).toEqual("aHello World");
         })
       );
     });
@@ -376,6 +441,71 @@ describe("ResetForm action", () => {
           expect(selected).withContext(`In ${browserName}`).toEqual(true);
         })
       );
+    });
+  });
+
+  describe("FreeText widget", () => {
+    describe("issue14438.pdf", () => {
+      let pages;
+
+      beforeAll(async () => {
+        pages = await loadAndWait(
+          "issue14438.pdf",
+          "[data-annotation-id='10R']"
+        );
+      });
+
+      afterAll(async () => {
+        await closePages(pages);
+      });
+
+      it("must check that the FreeText annotation has a popup", async () => {
+        await Promise.all(
+          pages.map(async ([browserName, page]) => {
+            await page.click("[data-annotation-id='10R']");
+            await page.waitForFunction(
+              `document.querySelector("[data-annotation-id='10R']").hidden === false`
+            );
+          })
+        );
+      });
+    });
+  });
+
+  describe("Ink widget and its popup after editing", () => {
+    describe("annotation-caret-ink.pdf", () => {
+      let pages;
+
+      beforeAll(async () => {
+        pages = await loadAndWait(
+          "annotation-caret-ink.pdf",
+          "[data-annotation-id='25R']"
+        );
+      });
+
+      afterAll(async () => {
+        await closePages(pages);
+      });
+
+      it("must check that the Ink annotation has a popup", async () => {
+        await Promise.all(
+          pages.map(async ([browserName, page]) => {
+            await page.waitForFunction(
+              `document.querySelector("[data-annotation-id='25R']").hidden === false`
+            );
+            await page.click("#editorFreeText");
+            await page.waitForTimeout(10);
+            await page.waitForFunction(
+              `document.querySelector("[data-annotation-id='25R']").hidden === true`
+            );
+            await page.click("#editorFreeText");
+            await page.waitForTimeout(10);
+            await page.waitForFunction(
+              `document.querySelector("[data-annotation-id='25R']").hidden === false`
+            );
+          })
+        );
+      });
     });
   });
 });
