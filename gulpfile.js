@@ -2286,7 +2286,11 @@ gulp.task(
       console.log();
       console.log("### Building reader package. Cleaning up first");
 
-      fs.rm(BUILD_DIR, { recursive: true, maxRetries: 3 }, done);
+      if (fs.existsSync(BUILD_DIR)) {
+        fs.rm(BUILD_DIR, { recursive: true, maxRetries: 10 }, done);
+      } else {
+        done();
+      }
     },
     "lib",
     "locale",
