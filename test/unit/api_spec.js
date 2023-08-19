@@ -19,6 +19,7 @@ import {
   AnnotationType,
   ImageKind,
   InvalidPDFException,
+  isNodeJS,
   MissingPDFException,
   objectSize,
   OPS,
@@ -50,11 +51,9 @@ import {
   RenderingCancelledException,
   StatTimer,
 } from "../../src/display/display_utils.js";
-import { AnnotationStorage } from "../../src/display/annotation_storage.js";
 import { AutoPrintRegExp } from "../../web/ui_utils.js";
 import { GlobalImageCache } from "../../src/core/image_utils.js";
 import { GlobalWorkerOptions } from "../../src/display/worker_options.js";
-import { isNodeJS } from "../../src/shared/is_node.js";
 import { Metadata } from "../../src/display/metadata.js";
 
 describe("api", function () {
@@ -899,6 +898,70 @@ describe("api", function () {
     });
   });
 
+  describe("GlobalWorkerOptions", function () {
+    let savedGlobalWorkerPort;
+
+    beforeAll(function () {
+      savedGlobalWorkerPort = GlobalWorkerOptions.workerPort;
+    });
+
+    afterAll(function () {
+      GlobalWorkerOptions.workerPort = savedGlobalWorkerPort;
+    });
+
+    it("use global `workerPort` with multiple, sequential, documents", async function () {
+      if (isNodeJS) {
+        pending("Worker is not supported in Node.js.");
+      }
+
+      GlobalWorkerOptions.workerPort = new Worker(
+        new URL("../../build/generic/build/pdf.worker.js", window.location)
+      );
+
+      const loadingTask1 = getDocument(basicApiGetDocumentParams);
+      const pdfDoc1 = await loadingTask1.promise;
+      expect(pdfDoc1.numPages).toEqual(3);
+      await loadingTask1.destroy();
+
+      const loadingTask2 = getDocument(
+        buildGetDocumentParams("tracemonkey.pdf")
+      );
+      const pdfDoc2 = await loadingTask2.promise;
+      expect(pdfDoc2.numPages).toEqual(14);
+      await loadingTask2.destroy();
+    });
+
+    it(
+      "avoid using the global `workerPort` when destruction has started, " +
+        "but not yet finished (issue 16777)",
+      async function () {
+        if (isNodeJS) {
+          pending("Worker is not supported in Node.js.");
+        }
+
+        GlobalWorkerOptions.workerPort = new Worker(
+          new URL("../../build/generic/build/pdf.worker.js", window.location)
+        );
+
+        const loadingTask = getDocument(basicApiGetDocumentParams);
+        const pdfDoc = await loadingTask.promise;
+        expect(pdfDoc.numPages).toEqual(3);
+        const destroyPromise = loadingTask.destroy();
+
+        expect(function () {
+          getDocument(buildGetDocumentParams("tracemonkey.pdf"));
+        }).toThrow(
+          new Error(
+            "PDFWorker.fromPort - the worker is being destroyed.\n" +
+              "Please remember to await `PDFDocumentLoadingTask.destroy()`-calls."
+          )
+        );
+
+        await destroyPromise;
+      }
+    );
+  });
+
   describe("PDFDocument", function () {
     let pdfLoadingTask, pdfDocument;
 
@@ -1359,21 +1422,16 @@ describe("api", function () {
       await loadingTask.destroy();
     });
 
-    it("gets javascript", async function () {
-      const javascript = await pdfDocument.getJavaScript();
-      expect(javascript).toEqual(null);
-    });
-
     it("gets javascript with printing instructions (JS action)", async function () {
       // PDF document with "JavaScript" action in the OpenAction dictionary.
       const loadingTask = getDocument(buildGetDocumentParams("issue6106.pdf"));
       const pdfDoc = await loadingTask.promise;
-      const javascript = await pdfDoc.getJavaScript();
+      const { OpenAction } = await pdfDoc.getJSActions();
 
-      expect(javascript).toEqual([
+      expect(OpenAction).toEqual([
         "this.print({bUI:true,bSilent:false,bShrinkToFit:true});",
       ]);
-      expect(javascript[0]).toMatch(AutoPrintRegExp);
+      expect(OpenAction[0]).toMatch(AutoPrintRegExp);
 
       await loadingTask.destroy();
     });
@@ -1487,6 +1545,42 @@ describe("api", function () {
           },
         ],
       });
+
+      await loadingTask.destroy();
+    });
+
+    it("gets fieldObjects with missing /P-entries", async function () {
+      if (isNodeJS) {
+        pending("Linked test-cases are not supported in Node.js.");
+      }
+
+      const loadingTask = getDocument(buildGetDocumentParams("bug1847733.pdf"));
+      const pdfDoc = await loadingTask.promise;
+      const fieldObjects = await pdfDoc.getFieldObjects();
+
+      for (const name in fieldObjects) {
+        const pageIndexes = fieldObjects[name].map(o => o.page);
+        let expected;
+
+        switch (name) {
+          case "formID":
+          case "pdf_submission_new":
+          case "simple_spc":
+          case "adobeWarning":
+            expected = [0];
+            break;
+          case "typeA13":
+            expected = [0, 0, 0, 0];
+            break;
+          case "typeA15[0]":
+          case "typeA15[1]":
+          case "typeA15[2]":
+          case "typeA15[3]":
+            expected = [-1, 0, 0, 0, 0];
+            break;
+        }
+        expect(pageIndexes).toEqual(expected);
+      }
 
       await loadingTask.destroy();
     });
@@ -2109,8 +2203,14 @@ describe("api", function () {
       We have learned that we should more explicitly set out our aspirations for the human experience of the internet.
       We do so now.
       `.repeat(100);
+      expect(manifesto.length).toEqual(80500);
+
       let loadingTask = getDocument(buildGetDocumentParams("empty.pdf"));
       let pdfDoc = await loadingTask.promise;
+      // The initial document size (indirectly) affects the length check below.
+      let typedArray = await pdfDoc.getData();
+      expect(typedArray.length).toBeLessThan(5000);
+
       pdfDoc.annotationStorage.setValue("pdfjs_internal_editor_0", {
         annotationType: AnnotationEditorType.FREETEXT,
         rect: [10, 10, 500, 500],
@@ -2120,6 +2220,53 @@ describe("api", function () {
         value: manifesto,
         pageIndex: 0,
       });
+      const data = await pdfDoc.saveDocument();
+      await loadingTask.destroy();
+
+      loadingTask = getDocument(data);
+      pdfDoc = await loadingTask.promise;
+      // Ensure that the Annotation text-content was actually compressed.
+      typedArray = await pdfDoc.getData();
+      expect(typedArray.length).toBeLessThan(90000);
+
+      const page = await pdfDoc.getPage(1);
+      const annotations = await page.getAnnotations();
+
+      expect(annotations[0].contentsObj.str).toEqual(manifesto);
+
+      await loadingTask.destroy();
+    });
+
+    it("write a new stamp annotation, save the pdf and check that the same image has the same ref", async function () {
+      if (isNodeJS) {
+        pending("Cannot create a bitmap from Node.js.");
+      }
+
+      const TEST_IMAGES_PATH = "../images/";
+      const filename = "firefox_logo.png";
+      const path = new URL(TEST_IMAGES_PATH + filename, window.location).href;
+
+      const response = await fetch(path);
+      const blob = await response.blob();
+      const bitmap = await createImageBitmap(blob);
+
+      let loadingTask = getDocument(buildGetDocumentParams("empty.pdf"));
+      let pdfDoc = await loadingTask.promise;
+      pdfDoc.annotationStorage.setValue("pdfjs_internal_editor_0", {
+        annotationType: AnnotationEditorType.STAMP,
+        rect: [12, 34, 56, 78],
+        rotation: 0,
+        bitmap,
+        bitmapId: "im1",
+        pageIndex: 0,
+      });
+      pdfDoc.annotationStorage.setValue("pdfjs_internal_editor_1", {
+        annotationType: AnnotationEditorType.STAMP,
+        rect: [112, 134, 156, 178],
+        rotation: 0,
+        bitmapId: "im1",
+        pageIndex: 0,
+      });
 
       const data = await pdfDoc.saveDocument();
       await loadingTask.destroy();
@@ -2127,9 +2274,17 @@ describe("api", function () {
       loadingTask = getDocument(data);
       pdfDoc = await loadingTask.promise;
       const page = await pdfDoc.getPage(1);
-      const annotations = await page.getAnnotations();
+      const opList = await page.getOperatorList();
 
-      expect(annotations[0].contentsObj.str).toEqual(manifesto);
+      // The pdf contains two stamp annotations with the same image.
+      // The image should be stored only once in the pdf and referenced twice.
+      // So we can verify that the image is referenced twice in the opList.
+
+      for (let i = 0; i < opList.fnArray.length; i++) {
+        if (opList.fnArray[i] === OPS.paintImageXObject) {
+          expect(opList.argsArray[i][0]).toEqual("img_p0_1");
+        }
+      }
 
       await loadingTask.destroy();
     });
@@ -2376,13 +2531,13 @@ describe("api", function () {
           docBaseUrl: "http://www.example.com/test/pdfs/qwerty.pdf",
         })
       );
-      const docBaseUrlPromise = docBaseUrlLoadingTask.promise.then(function (
-        pdfDoc
-      ) {
-        return pdfDoc.getPage(1).then(function (pdfPage) {
-          return pdfPage.getAnnotations();
-        });
-      });
+      const docBaseUrlPromise = docBaseUrlLoadingTask.promise.then(
+        function (pdfDoc) {
+          return pdfDoc.getPage(1).then(function (pdfPage) {
+            return pdfPage.getAnnotations();
+          });
+        }
+      );
 
       const invalidDocBaseUrlLoadingTask = getDocument(
         buildGetDocumentParams(filename, {
@@ -3473,12 +3628,8 @@ Caron Broadcasting, Inc., an Ohio corporation (“Lessee”).`)
       // Update the contents of the form-field again.
       annotationStorage.setValue("22R", { value: "Printing again..." });
 
-      const annotationHash = AnnotationStorage.getHash(
-        annotationStorage.serializable
-      );
-      const printAnnotationHash = AnnotationStorage.getHash(
-        printAnnotationStorage.serializable
-      );
+      const { hash: annotationHash } = annotationStorage.serializable;
+      const { hash: printAnnotationHash } = printAnnotationStorage.serializable;
       // Sanity check to ensure that the print-storage didn't change,
       // after the form-field was updated.
       expect(printAnnotationHash).not.toEqual(annotationHash);

@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-import { AnnotationFactory, PopupAnnotation } from "./annotation.js";
 import {
+  AnnotationEditorPrefix,
   assert,
   FormatError,
   info,
@@ -30,6 +30,7 @@ import {
   Util,
   warn,
 } from "../shared/util.js";
+import { AnnotationFactory, PopupAnnotation } from "./annotation.js";
 import {
   collectActions,
   getInheritableProperty,
@@ -277,7 +278,7 @@ class Page {
     }
   }
 
-  async saveNewAnnotations(handler, task, annotations) {
+  async saveNewAnnotations(handler, task, annotations, imagePromises) {
     if (this.xfaFactory) {
       throw new Error("XFA: Cannot save new annotations.");
     }
@@ -306,7 +307,8 @@ class Page {
     const newData = await AnnotationFactory.saveNewAnnotations(
       partialEvaluator,
       task,
-      annotations
+      annotations,
+      imagePromises
     );
 
     for (const { ref } of newData.annotations) {
@@ -433,14 +435,52 @@ class Page {
 
     let newAnnotationsPromise = Promise.resolve(null);
     if (newAnnotationsByPage) {
+      let imagePromises;
       const newAnnotations = newAnnotationsByPage.get(this.pageIndex);
       if (newAnnotations) {
+        // An annotation can contain a reference to a bitmap, but this bitmap
+        // is defined in another annotation. So we need to find this annotation
+        // and generate the bitmap.
+        const missingBitmaps = new Set();
+        for (const { bitmapId, bitmap } of newAnnotations) {
+          if (bitmapId && !bitmap && !missingBitmaps.has(bitmapId)) {
+            missingBitmaps.add(bitmapId);
+          }
+        }
+
+        const { isOffscreenCanvasSupported } = this.evaluatorOptions;
+        if (missingBitmaps.size > 0) {
+          const annotationWithBitmaps = newAnnotations.slice();
+          for (const [key, annotation] of annotationStorage) {
+            if (!key.startsWith(AnnotationEditorPrefix)) {
+              continue;
+            }
+            if (annotation.bitmap && missingBitmaps.has(annotation.bitmapId)) {
+              annotationWithBitmaps.push(annotation);
+            }
+          }
+          // The array annotationWithBitmaps cannot be empty: the check above
+          // makes sure to have at least one annotation containing the bitmap.
+          imagePromises = AnnotationFactory.generateImages(
+            annotationWithBitmaps,
+            this.xref,
+            isOffscreenCanvasSupported
+          );
+        } else {
+          imagePromises = AnnotationFactory.generateImages(
+            newAnnotations,
+            this.xref,
+            isOffscreenCanvasSupported
+          );
+        }
+
         deletedAnnotations = new RefSet();
         this.#replaceIdByRef(newAnnotations, deletedAnnotations, null);
         newAnnotationsPromise = AnnotationFactory.printNewAnnotations(
           partialEvaluator,
           task,
-          newAnnotations
+          newAnnotations,
+          imagePromises
         );
       }
     }
@@ -516,7 +556,8 @@ class Page {
       for (const annotation of annotations) {
         if (
           intentAny ||
-          (intentDisplay && annotation.mustBeViewed(annotationStorage)) ||
+          (intentDisplay &&
+            annotation.mustBeViewed(annotationStorage, renderForms)) ||
           (intentPrint && annotation.mustBePrinted(annotationStorage))
         ) {
           opListPromises.push(
@@ -1667,14 +1708,10 @@ class PDFDocument {
     const field = this.xref.fetchIfRef(fieldRef);
     if (field.has("T")) {
       const partName = stringToPDFString(field.get("T"));
-      if (name === "") {
-        name = partName;
-      } else {
-        name = `${name}.${partName}`;
-      }
+      name = name === "" ? partName : `${name}.${partName}`;
     }
 
-    if (!field.has("Kids") && /\[\d+\]$/.test(name)) {
+    if (!field.has("Kids") && field.has("T") && /\[\d+\]$/.test(name)) {
       // We've a terminal node: strip the index.
       name = name.substring(0, name.lastIndexOf("["));
     }

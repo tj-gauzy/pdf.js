@@ -63,6 +63,10 @@ function getViewerConfiguration() {
       ),
       editorInkButton: document.getElementById("editorInk"),
       editorInkParamsToolbar: document.getElementById("editorInkParamsToolbar"),
+      editorStampButton: document.getElementById("editorStamp"),
+      editorStampParamsToolbar: document.getElementById(
+        "editorStampParamsToolbar"
+      ),
       download: document.getElementById("download"),
     },
     secondaryToolbar: {
@@ -159,6 +163,7 @@ function getViewerConfiguration() {
       editorInkColor: document.getElementById("editorInkColor"),
       editorInkThickness: document.getElementById("editorInkThickness"),
       editorInkOpacity: document.getElementById("editorInkOpacity"),
+      editorStampAddImage: document.getElementById("editorStampAddImage"),
     },
     printContainer: document.getElementById("printContainer"),
     openFileInput:

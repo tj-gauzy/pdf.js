@@ -15,18 +15,24 @@
  */
 /* eslint-disable no-var */
 
-"use strict";
+import { copySubtreeSync, ensureDirSync, removeDirSync } from "./testutils.mjs";
+import {
+  downloadManifestFiles,
+  verifyManifestFiles,
+} from "./downloadutils.mjs";
+import dns from "dns";
+import fs from "fs";
+import os from "os";
+import path from "path";
+import puppeteer from "puppeteer";
+import readline from "readline";
+import rimraf from "rimraf";
+import { translateFont } from "./font/ttxdriver.mjs";
+import url from "url";
+import { WebServer } from "./webserver.mjs";
+import yargs from "yargs";
 
-var WebServer = require("./webserver.js").WebServer;
-var path = require("path");
-var fs = require("fs");
-var os = require("os");
-var puppeteer = require("puppeteer");
-var url = require("url");
-var testUtils = require("./testutils.js");
-const dns = require("dns");
-const readline = require("readline");
-const yargs = require("yargs");
+const rimrafSync = rimraf.sync;
 
 // Chrome uses host `127.0.0.1` in the browser's websocket endpoint URL while
 // Firefox uses `localhost`, which before Node.js 17 also resolved to the IPv4
@@ -44,7 +50,7 @@ if (dns.setDefaultResultOrder !== undefined) {
 }
 
 function parseOptions() {
-  yargs
+  const parsedArgs = yargs(process.argv)
     .usage("Usage: $0")
     .option("downloadOnly", {
       default: false,
@@ -186,11 +192,7 @@ function parseOptions() {
       );
     });
 
-  const result = yargs.argv;
-  if (result.help) {
-    yargs.showHelp();
-    process.exit(0);
-  }
+  const result = parsedArgs.argv;
   result.testfilter = Array.isArray(result.testfilter)
     ? result.testfilter
     : [result.testfilter];
@@ -219,9 +221,9 @@ function monitorBrowserTimeout(session, onTimeout) {
 function updateRefImages() {
   function sync(removeTmp) {
     console.log("  Updating ref/ ... ");
-    testUtils.copySubtreeSync(refsTmpDir, refsDir);
+    copySubtreeSync(refsTmpDir, refsDir);
     if (removeTmp) {
-      testUtils.removeDirSync(refsTmpDir);
+      removeDirSync(refsTmpDir);
     }
     console.log("done");
   }
@@ -260,11 +262,13 @@ function examineRefImages() {
 function startRefTest(masterMode, showRefImages) {
   function finalize() {
     stopServer();
+    let numRuns = 0;
     var numErrors = 0;
     var numFBFFailures = 0;
     var numEqFailures = 0;
     var numEqNoSnapshot = 0;
     sessions.forEach(function (session) {
+      numRuns += session.numRuns;
       numErrors += session.numErrors;
       numFBFFailures += session.numFBFFailures;
       numEqFailures += session.numEqFailures;
@@ -272,7 +276,9 @@ function startRefTest(masterMode, showRefImages) {
     });
     var numFatalFailures = numErrors + numFBFFailures;
     console.log();
-    if (numFatalFailures + numEqFailures > 0) {
+    if (!numRuns) {
+      console.log(`OHNOES!  No tests ran!`);
+    } else if (numFatalFailures + numEqFailures > 0) {
       console.log("OHNOES!  Some tests failed!");
       if (numErrors > 0) {
         console.log("  errors: " + numErrors);
@@ -325,7 +331,7 @@ function startRefTest(masterMode, showRefImages) {
       fs.unlinkSync(eqLog);
     }
     if (fs.existsSync(testResultDir)) {
-      testUtils.removeDirSync(testResultDir);
+      removeDirSync(testResultDir);
     }
 
     startTime = Date.now();
@@ -346,6 +352,7 @@ function startRefTest(masterMode, showRefImages) {
         session.taskResults[item.id] = roundsResults;
         session.tasks[item.id] = item;
       });
+      session.numRuns = 0;
       session.numErrors = 0;
       session.numFBFFailures = 0;
       session.numEqNoSnapshot = 0;
@@ -356,7 +363,7 @@ function startRefTest(masterMode, showRefImages) {
   function checkRefsTmp() {
     if (masterMode && fs.existsSync(refsTmpDir)) {
       if (options.noPrompts) {
-        testUtils.removeDirSync(refsTmpDir);
+        removeDirSync(refsTmpDir);
         setup();
         return;
       }
@@ -368,7 +375,7 @@ function startRefTest(masterMode, showRefImages) {
         "SHOULD THIS SCRIPT REMOVE tmp/? THINK CAREFULLY [yn] ",
         function (answer) {
           if (answer.toLowerCase() === "y") {
-            testUtils.removeDirSync(refsTmpDir);
+            removeDirSync(refsTmpDir);
           }
           setup();
           reader.close();
@@ -483,7 +490,7 @@ function checkEq(task, results, browser, masterMode) {
             " != reference rendering"
         );
 
-        testUtils.ensureDirSync(testSnapshotDir);
+        ensureDirSync(testSnapshotDir);
         fs.writeFileSync(
           path.join(testSnapshotDir, page + 1 + ".png"),
           testSnapshot
@@ -521,7 +528,7 @@ function checkEq(task, results, browser, masterMode) {
         browser,
         taskId
       );
-      testUtils.ensureDirSync(tmpSnapshotDir);
+      ensureDirSync(tmpSnapshotDir);
       fs.writeFileSync(
         path.join(tmpSnapshotDir, page + 1 + ".png"),
         testSnapshot
@@ -606,6 +613,8 @@ function checkRefTestResults(browser, id, results) {
   var failed = false;
   var session = getSession(browser);
   var task = session.tasks[id];
+  session.numRuns++;
+
   results.forEach(function (roundResults, round) {
     roundResults.forEach(function (pageResult, page) {
       if (!pageResult) {
@@ -771,7 +780,9 @@ function onAllSessionsClosedAfterTests(name) {
     });
     console.log();
     console.log("Run " + numRuns + " tests");
-    if (numErrors > 0) {
+    if (!numRuns) {
+      console.log(`OHNOES!  No ${name} tests ran!`);
+    } else if (numErrors > 0) {
       console.log("OHNOES!  Some " + name + " tests failed!");
       console.log("  " + numErrors + " of " + numRuns + " failed");
     } else {
@@ -811,7 +822,7 @@ async function startIntegrationTest() {
   onAllSessionsClosed = onAllSessionsClosedAfterTests("integration");
   startServer();
 
-  const { runTests } = require("./integration-boot.js");
+  const { runTests } = await import("./integration-boot.mjs");
   await startBrowsers(function (session) {
     session.numRuns = 0;
     session.numErrors = 0;
@@ -844,7 +855,6 @@ function unitTestPostHandler(req, res) {
   });
   req.on("end", function () {
     if (pathname === "/ttx") {
-      var translateFont = require("./font/ttxdriver.js").translateFont;
       var onCancel = null,
         ttxTimeout = 10000;
       var timeoutId = setTimeout(function () {
@@ -935,6 +945,8 @@ async function startBrowser(browserName, startUrl = "") {
       "gfx.offscreencanvas.enabled": true,
       // Disable gpu acceleration
       "gfx.canvas.accelerated": false,
+      // Enable the `round` CSS function.
+      "layout.css.round.enabled": true,
     };
   }
 
@@ -1021,8 +1033,7 @@ async function closeSession(browser) {
     });
     if (allClosed) {
       if (tempDir) {
-        const rimraf = require("rimraf");
-        rimraf.sync(tempDir);
+        rimrafSync(tempDir);
       }
       onAllSessionsClosed?.();
     }
@@ -1030,10 +1041,9 @@ async function closeSession(browser) {
 }
 
 function ensurePDFsDownloaded(callback) {
-  var downloadUtils = require("./downloadutils.js");
   var manifest = getTestManifest();
-  downloadUtils.downloadManifestFiles(manifest, function () {
-    downloadUtils.verifyManifestFiles(manifest, function (hasErrors) {
+  downloadManifestFiles(manifest, function () {
+    verifyManifestFiles(manifest, function (hasErrors) {
       if (hasErrors) {
         console.log(
           "Unable to verify the checksum for the files that are " +

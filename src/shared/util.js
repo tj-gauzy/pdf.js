@@ -12,7 +12,19 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+/* globals process */
 
+// NW.js / Electron is a browser context, but copies some Node.js objects; see
+// http://docs.nwjs.io/en/latest/For%20Users/Advanced/JavaScript%20Contexts%20in%20NW.js/#access-nodejs-and-nwjs-api-in-browser-context
+// https://www.electronjs.org/docs/api/process#processversionselectron-readonly
+// https://www.electronjs.org/docs/api/process#processtype-readonly
+const isNodeJS =
+  (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) &&
+  typeof process === "object" &&
+  process + "" === "[object process]" &&
+  !process.versions.nw &&
+  !(process.versions.electron && process.type && process.type !== "browser");
+  
 // Skip compatibility checks if we already ran the module.
 if (typeof PDFJSDev !== "undefined" && !globalThis._pdfjsCompatibilityChecked) {
   globalThis._pdfjsCompatibilityChecked = true;
@@ -66,16 +78,19 @@ const AnnotationEditorType = {
   DISABLE: -1,
   NONE: 0,
   FREETEXT: 3,
+  STAMP: 13,
   INK: 15,
 };
 
 const AnnotationEditorParamsType = {
-  FREETEXT_SIZE: 1,
-  FREETEXT_COLOR: 2,
-  FREETEXT_OPACITY: 3,
-  INK_COLOR: 11,
-  INK_THICKNESS: 12,
-  INK_OPACITY: 13,
+  RESIZE: 1,
+  CREATE: 2,
+  FREETEXT_SIZE: 11,
+  FREETEXT_COLOR: 12,
+  FREETEXT_OPACITY: 13,
+  INK_COLOR: 21,
+  INK_THICKNESS: 22,
+  INK_OPACITY: 23,
 };
 
 // Permission flags from Table 22, Section 7.6.3.2 of the PDF specification.
@@ -136,24 +151,6 @@ const AnnotationType = {
   WATERMARK: 24,
   THREED: 25,
   REDACT: 26,
-};
-
-const AnnotationStateModelType = {
-  MARKED: "Marked",
-  REVIEW: "Review",
-};
-
-const AnnotationMarkedState = {
-  MARKED: "Marked",
-  UNMARKED: "Unmarked",
-};
-
-const AnnotationReviewState = {
-  ACCEPTED: "Accepted",
-  REJECTED: "Rejected",
-  CANCELLED: "Cancelled",
-  COMPLETED: "Completed",
-  NONE: "None",
 };
 
 const AnnotationReplyType = {
@@ -635,6 +632,14 @@ class FeatureTest {
       isMac: navigator.platform.includes("Mac"),
     });
   }
+
+  static get isCSSRoundSupported() {
+    return shadow(
+      this,
+      "isCSSRoundSupported",
+      globalThis.CSS?.supports?.("width: round(1.5px, 1px)")
+    );
+  }
 }
 
 const hexNumbers = [...Array(256).keys()].map(n =>
@@ -1027,6 +1032,27 @@ function normalizeUnicode(str) {
   });
 }
 
+function getUuid() {
+  if (
+    (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) ||
+    (typeof crypto !== "undefined" && typeof crypto?.randomUUID === "function")
+  ) {
+    return crypto.randomUUID();
+  }
+  const buf = new Uint8Array(32);
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto?.getRandomValues === "function"
+  ) {
+    crypto.getRandomValues(buf);
+  } else {
+    for (let i = 0; i < 32; i++) {
+      buf[i] = Math.floor(Math.random() * 255);
+    }
+  }
+  return bytesToString(buf);
+}
+
 export {
   AbortException,
   AnnotationActionEventType,
@@ -1036,11 +1062,8 @@ export {
   AnnotationEditorType,
   AnnotationFieldFlag,
   AnnotationFlag,
-  AnnotationMarkedState,
   AnnotationMode,
   AnnotationReplyType,
-  AnnotationReviewState,
-  AnnotationStateModelType,
   AnnotationType,
   assert,
   BaseException,
@@ -1053,6 +1076,7 @@ export {
   FONT_IDENTITY_MATRIX,
   FormatError,
   getModificationDate,
+  getUuid,
   getVerbosityLevel,
   IDENTITY_MATRIX,
   ImageKind,
@@ -1060,6 +1084,7 @@ export {
   InvalidPDFException,
   isArrayBuffer,
   isArrayEqual,
+  isNodeJS,
   LINE_DESCENT_FACTOR,
   LINE_FACTOR,
   MAX_IMAGE_SIZE_TO_CACHE,

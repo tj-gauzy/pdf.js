@@ -46,21 +46,12 @@ async function writeDict(dict, buffer, transform) {
 
 async function writeStream(stream, buffer, transform) {
   let string = stream.getString();
-  if (transform !== null) {
-    string = transform.encryptString(string);
-  }
   const { dict } = stream;
 
-  // eslint-disable-next-line no-undef
-  if (typeof CompressionStream === "undefined") {
-    dict.set("Length", string.length);
-    await writeDict(dict, buffer, transform);
-    buffer.push(" stream\n", string, "\nendstream");
-    return;
-  }
-
-  const filter = await dict.getAsync("Filter");
-  const params = await dict.getAsync("DecodeParms");
+  const [filter, params] = await Promise.all([
+    dict.getAsync("Filter"),
+    dict.getAsync("DecodeParms"),
+  ]);
 
   const filterZero = Array.isArray(filter)
     ? await dict.xref.fetchIfRefAsync(filter[0])
@@ -71,7 +62,11 @@ async function writeStream(stream, buffer, transform) {
   // The number 256 is arbitrary, but it should be reasonable.
   const MIN_LENGTH_FOR_COMPRESSING = 256;
 
-  if (string.length >= MIN_LENGTH_FOR_COMPRESSING || isFilterZeroFlateDecode) {
+  if (
+    // eslint-disable-next-line no-undef
+    typeof CompressionStream !== "undefined" &&
+    (string.length >= MIN_LENGTH_FOR_COMPRESSING || isFilterZeroFlateDecode)
+  ) {
     try {
       const byteArray = stringToBytes(string);
       // eslint-disable-next-line no-undef
@@ -106,6 +101,10 @@ async function writeStream(stream, buffer, transform) {
     } catch (ex) {
       info(`writeStream - cannot compress data: "${ex}".`);
     }
+  }
+
+  if (transform !== null) {
+    string = transform.encryptString(string);
   }
 
   dict.set("Length", string.length);
@@ -205,11 +204,9 @@ function writeXFADataForAcroform(str, newRefs) {
       node = xml.documentElement.searchNode([nodePath.at(-1)], 0);
     }
     if (node) {
-      if (Array.isArray(value)) {
-        node.childNodes = value.map(val => new SimpleDOMNode("value", val));
-      } else {
-        node.childNodes = [new SimpleDOMNode("#text", value)];
-      }
+      node.childNodes = Array.isArray(value)
+        ? value.map(val => new SimpleDOMNode("value", val))
+        : [new SimpleDOMNode("#text", value)];
     } else {
       warn(`Node not found for path: ${path}`);
     }
@@ -233,7 +230,7 @@ async function updateAcroform({
     warn("XFA - Cannot save it");
   }
 
-  if (!needAppearances && (!hasXfa || !xfaDatasetsRef)) {
+  if (!needAppearances && (!hasXfa || !xfaDatasetsRef || hasXfaDatasetsEntry)) {
     return;
   }
 

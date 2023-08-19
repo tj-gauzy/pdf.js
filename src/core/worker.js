@@ -19,6 +19,7 @@ import {
   getVerbosityLevel,
   info,
   InvalidPDFException,
+  isNodeJS,
   MissingPDFException,
   PasswordException,
   PromiseCapability,
@@ -36,9 +37,9 @@ import {
 } from "./core_utils.js";
 import { Dict, Ref } from "./primitives.js";
 import { LocalPdfManager, NetworkPdfManager } from "./pdf_manager.js";
+import { AnnotationFactory } from "./annotation.js";
 import { clearGlobalCaches } from "./cleanup_helper.js";
 import { incrementalUpdate } from "./writer.js";
-import { isNodeJS } from "../shared/is_node.js";
 import { MessageHandler } from "../shared/message_handler.js";
 import { PDFWorkerStream } from "./worker_stream.js";
 
@@ -462,10 +463,6 @@ class WorkerMessageHandler {
       return pdfManager.ensureCatalog("attachments");
     });
 
-    handler.on("GetJavaScript", function (data) {
-      return pdfManager.ensureCatalog("javaScript");
-    });
-
     handler.on("GetDocJSActions", function (data) {
       return pdfManager.ensureCatalog("jsActions");
     });
@@ -537,26 +534,34 @@ class WorkerMessageHandler {
 
     handler.on(
       "SaveDocument",
-      function ({ isPureXfa, numPages, annotationStorage, filename }) {
+      async function ({ isPureXfa, numPages, annotationStorage, filename }) {
         const promises = [
           pdfManager.requestLoadedStream(),
           pdfManager.ensureCatalog("acroForm"),
           pdfManager.ensureCatalog("acroFormRef"),
-          pdfManager.ensureDoc("xref"),
           pdfManager.ensureDoc("startXRef"),
+          pdfManager.ensureDoc("linearization"),
         ];
 
         const newAnnotationsByPage = !isPureXfa
           ? getNewAnnotationsMap(annotationStorage)
           : null;
 
+        const xref = await pdfManager.ensureDoc("xref");
+
         if (newAnnotationsByPage) {
+          const imagePromises = AnnotationFactory.generateImages(
+            annotationStorage.values(),
+            xref,
+            pdfManager.evaluatorOptions.isOffscreenCanvasSupported
+          );
+
           for (const [pageIndex, annotations] of newAnnotationsByPage) {
             promises.push(
               pdfManager.getPage(pageIndex).then(page => {
                 const task = new WorkerTask(`Save (editor): page ${pageIndex}`);
                 return page
-                  .saveNewAnnotations(handler, task, annotations)
+                  .saveNewAnnotations(handler, task, annotations, imagePromises)
                   .finally(function () {
                     finishWorkerTask(task);
                   });
@@ -586,8 +591,8 @@ class WorkerMessageHandler {
           stream,
           acroForm,
           acroFormRef,
-          xref,
           startXRef,
+          linearization,
           ...refs
         ]) {
           let newRefs = [];
@@ -649,28 +654,28 @@ class WorkerMessageHandler {
               infoRef: xref.trailer.getRaw("Info") || null,
               info: infoObj,
               fileIds: xref.trailer.get("ID") || null,
-              startXRef: xref.lastXRefStreamPos ?? startXRef,
+              startXRef: linearization
+                ? startXRef
+                : xref.lastXRefStreamPos ?? startXRef,
               filename,
             };
           }
 
-          try {
-            return incrementalUpdate({
-              originalData: stream.bytes,
-              xrefInfo: newXrefInfo,
-              newRefs,
-              xref,
-              hasXfa: !!xfa,
-              xfaDatasetsRef,
-              hasXfaDatasetsEntry,
-              needAppearances,
-              acroFormRef,
-              acroForm,
-              xfaData,
-            });
-          } finally {
+          return incrementalUpdate({
+            originalData: stream.bytes,
+            xrefInfo: newXrefInfo,
+            newRefs,
+            xref,
+            hasXfa: !!xfa,
+            xfaDatasetsRef,
+            hasXfaDatasetsEntry,
+            needAppearances,
+            acroFormRef,
+            acroForm,
+            xfaData,
+          }).finally(() => {
             xref.resetNewTemporaryRef();
-          }
+          });
         });
       }
     );
