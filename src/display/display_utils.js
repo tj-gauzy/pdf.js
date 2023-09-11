@@ -989,14 +989,9 @@ function setLayerDimensions(
     // to improve text selection precision.
     // the text position will match with -
     // canvas better for small fonts or zoomedOut.
+    // and use scale transform in text_layer_builder.css to zoom textLayer back to normal.
     const isTextLayer = div.classList.contains("textLayer");
     const scale = isTextLayer ? 10 : 1;
-
-    // use scale transform to zoom textLayer back to normal
-    if (isTextLayer) {
-      style.transformOrigin = "0% 0%";
-      style.transform = "scale(0.1)";
-    }
 
     const w = `var(--scale-factor) * ${scale * pageWidth}px`,
       h = `var(--scale-factor) * ${scale * pageHeight}px`;

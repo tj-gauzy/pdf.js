@@ -44,6 +44,15 @@
 [data-main-rotation="270"] {
   transform: rotate(270deg) translateX(-100%);
 }
+.textLayer[data-main-rotation="90"] {
+  transform: scale(0.1) rotate(90deg) translateY(-100%) ;
+}
+.textLayer[data-main-rotation="180"] {
+  transform: scale(0.1) rotate(180deg) translate(-100%, -100%);
+}
+.textLayer[data-main-rotation="270"] {
+  transform: scale(0.1) rotate(270deg) translateX(-100%);
+}
 
 #hiddenCopyElement {
   position: absolute;

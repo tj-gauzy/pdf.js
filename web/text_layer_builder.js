@@ -265,7 +265,7 @@ class TextLayerBuilder {
   }
 
   appendImage(image) {
-    if (this._imageLayerRendered) {
+    if (this._imageLayerRendered && (this._imagesCount || 0) > 0) {
       return;
     }
     // TODO: support rotation of page
@@ -317,6 +317,11 @@ class TextLayerBuilder {
   }
 
   endLayout() {
+    if (!this._images || this._images.childElementCount === 0) {
+      return;
+    }
+
+    this._imagesCount = this._images.childElementCount;
     this.div.append(this._images);
     this._images = null;
     this._imageLayerRendered = true;
