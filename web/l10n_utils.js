@@ -82,6 +82,17 @@ const DEFAULT_L10N_STRINGS = {
   editor_free_text2_aria_label: "Text Editor",
   editor_ink2_aria_label: "Draw Editor",
   editor_ink_canvas_aria_label: "User-created image",
+  editor_alt_text_button_label: "Alt text",
+  editor_alt_text_edit_button_label: "Edit alt text",
+  editor_alt_text_decorative_tooltip: "Marked as decorative",
+  editor_resizer_label_topLeft: "Top left corner — resize",
+  editor_resizer_label_topMiddle: "Top middle — resize",
+  editor_resizer_label_topRight: "Top right corner — resize",
+  editor_resizer_label_middleRight: "Middle right — resize",
+  editor_resizer_label_bottomRight: "Bottom right corner — resize",
+  editor_resizer_label_bottomMiddle: "Bottom middle — resize",
+  editor_resizer_label_bottomLeft: "Bottom left corner — resize",
+  editor_resizer_label_middleLeft: "Middle left — resize",
 };
 if (typeof PDFJSDev === "undefined" || !PDFJSDev.test("MOZCENTRAL")) {
   DEFAULT_L10N_STRINGS.print_progress_percent = "{{progress}}%";

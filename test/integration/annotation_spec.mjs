@@ -13,12 +13,12 @@
  * limitations under the License.
  */
 
-const {
+import {
   closePages,
-  getSelector,
   getQuerySelector,
+  getSelector,
   loadAndWait,
-} = require("./test_utils.js");
+} from "./test_utils.mjs";
 
 describe("Annotation highlight", () => {
   describe("annotation-highlight.pdf", () => {
@@ -116,46 +116,6 @@ describe("Checkbox annotation", () => {
             `document.querySelector("${selector} > :first-child").checked`
           );
           expect(true).withContext(`In ${browserName}`).toEqual(true);
-        })
-      );
-    });
-  });
-
-  describe("f1040_2022.pdf", () => {
-    let pages;
-
-    beforeAll(async () => {
-      pages = await loadAndWait(
-        "f1040_2022.pdf",
-        "[data-annotation-id='1566R']"
-      );
-    });
-
-    afterAll(async () => {
-      await closePages(pages);
-    });
-
-    it("must check the checkbox", async () => {
-      await Promise.all(
-        pages.map(async ([_browserName, page]) => {
-          const selectors = [1566, 1568, 1569, 1570, 1571].map(
-            id => `[data-annotation-id='${id}R']`
-          );
-          for (const selector of selectors) {
-            await page.click(selector);
-            for (const otherSelector of selectors) {
-              if (otherSelector === selector) {
-                await page.waitForFunction(
-                  `document.querySelector("${selector} > :first-child").checked`
-                );
-              } else {
-                await page.waitForFunction(
-                  `!document.querySelector("${otherSelector} > :first-child").checked`
-                );
-              }
-            }
-            page.waitForTimeout(10);
-          }
         })
       );
     });
@@ -562,6 +522,67 @@ describe("ResetForm action", () => {
             expect(text)
               .withContext(`In ${browserName}`)
               .toEqual("Hello World");
+          })
+        );
+      });
+    });
+  });
+
+  describe("Toggle popup with keyboard", () => {
+    describe("tagged_stamp.pdf", () => {
+      let pages;
+
+      beforeAll(async () => {
+        pages = await loadAndWait(
+          "tagged_stamp.pdf",
+          "[data-annotation-id='20R']"
+        );
+      });
+
+      afterAll(async () => {
+        await closePages(pages);
+      });
+
+      it("must check that the popup has the correct visibility", async () => {
+        await Promise.all(
+          pages.map(async ([browserName, page]) => {
+            let hidden = await page.$eval(
+              "[data-annotation-id='21R']",
+              el => el.hidden
+            );
+            expect(hidden).withContext(`In ${browserName}`).toEqual(true);
+            await page.focus("[data-annotation-id='20R']");
+            await page.keyboard.press("Enter");
+            await page.waitForTimeout(10);
+            hidden = await page.$eval(
+              "[data-annotation-id='21R']",
+              el => el.hidden
+            );
+            expect(hidden).withContext(`In ${browserName}`).toEqual(false);
+
+            await page.keyboard.press("Enter");
+            await page.waitForTimeout(10);
+            hidden = await page.$eval(
+              "[data-annotation-id='21R']",
+              el => el.hidden
+            );
+            expect(hidden).withContext(`In ${browserName}`).toEqual(true);
+
+            await page.keyboard.press("Enter");
+            await page.waitForTimeout(10);
+            hidden = await page.$eval(
+              "[data-annotation-id='21R']",
+              el => el.hidden
+            );
+            expect(hidden).withContext(`In ${browserName}`).toEqual(false);
+
+            await page.keyboard.press("Escape");
+            await page.waitForTimeout(10);
+            hidden = await page.$eval(
+              "[data-annotation-id='21R']",
+              el => el.hidden
+            );
+            expect(hidden).withContext(`In ${browserName}`).toEqual(true);
           })
         );
       });

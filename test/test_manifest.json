@@ -3143,6 +3143,13 @@
       "link": true,
       "type": "eq"
     },
+    {  "id": "issue17064_readonly",
+       "file": "pdfs/issue17064_readonly.pdf",
+       "md5": "cb84f8e8301e935a3b9ea8ef320f45bf",
+       "rounds": 1,
+       "type": "eq",
+       "annotations": true
+    },
     {  "id": "issue12714",
        "file": "pdfs/issue12714.pdf",
        "md5": "f9ee31c74f9e342e95122b0b3bc84fa0",
@@ -5589,6 +5596,14 @@
        "link": true,
        "lastPage": 1,
        "type": "text"
+    },
+    {  "id": "mupdf-707147",
+       "file": "pdfs/mupdf-707147.pdf",
+       "md5": "3b6f4e142baed0585bb52c1eb79f918a",
+       "rounds": 1,
+       "link": true,
+       "lastPage": 1,
+       "type": "eq"
     },
     {  "id": "issue5421",
        "file": "pdfs/issue5421.pdf",
@@ -8119,5 +8134,35 @@
           "rotation": 0
        }
      }
+   },
+   {
+      "id": "issue16863",
+      "file": "pdfs/issue16863.pdf",
+      "md5": "af8abe281721f92a0d46646969f061de",
+      "link": true,
+      "type": "other"
+   },
+   {
+      "id": "bug1851498",
+      "file": "pdfs/bug1851498.pdf",
+      "md5": "787f092f449016a649c6c9343042429a",
+      "rounds": 1,
+      "type": "eq",
+      "annotations": true
+   },
+   {  
+      "id": "issue17065",
+      "file": "pdfs/issue17065.pdf",
+      "md5": "16a70b9941ba049a61612109e0e1d719",
+      "rounds": 1,
+      "type": "eq"
+   },
+   {
+      "id": "issue17069",
+      "file": "pdfs/issue17069.pdf",
+      "md5": "e44a3920c83d8e7be112c52da4db8e57",
+      "rounds": 1,
+      "type": "eq",
+      "annotations": true
    }
 ]

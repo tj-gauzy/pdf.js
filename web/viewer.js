@@ -157,6 +157,14 @@ function getViewerConfiguration() {
         linearized: document.getElementById("linearizedField"),
       },
     },
+    altTextDialog: {
+      dialog: document.getElementById("altTextDialog"),
+      optionDescription: document.getElementById("descriptionButton"),
+      optionDecorative: document.getElementById("decorativeButton"),
+      textarea: document.getElementById("descriptionTextarea"),
+      cancelButton: document.getElementById("altTextCancel"),
+      saveButton: document.getElementById("altTextSave"),
+    },
     annotationEditorParams: {
       editorFreeTextFontSize: document.getElementById("editorFreeTextFontSize"),
       editorFreeTextColor: document.getElementById("editorFreeTextColor"),
@@ -170,7 +178,7 @@ function getViewerConfiguration() {
       typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")
         ? document.getElementById("fileInput")
         : null,
-    debuggerScriptPath: "./debugger.js",
+    debuggerScriptPath: "./debugger.mjs",
   };
 }
 

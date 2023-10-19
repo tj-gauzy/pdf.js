@@ -1053,6 +1053,8 @@ function getUuid() {
   return bytesToString(buf);
 }
 
+const AnnotationPrefix = "pdfjs_internal_id_";
+
 export {
   AbortException,
   AnnotationActionEventType,
@@ -1063,6 +1065,7 @@ export {
   AnnotationFieldFlag,
   AnnotationFlag,
   AnnotationMode,
+  AnnotationPrefix,
   AnnotationReplyType,
   AnnotationType,
   assert,

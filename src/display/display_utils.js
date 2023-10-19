@@ -31,8 +31,6 @@ import {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-const AnnotationPrefix = "pdfjs_internal_id_";
-
 class PixelsPerInch {
   static CSS = 96.0;
 
@@ -792,26 +790,10 @@ function isValidFetchUrl(url, baseUrl) {
 }
 
 /**
- * @param {string} src
- * @param {boolean} [removeScriptElement]
- * @returns {Promise<void>}
+ * Event handler to suppress context menu.
  */
-function loadScript(src, removeScriptElement = false) {
-  return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-
-    script.onload = function (evt) {
-      if (removeScriptElement) {
-        script.remove();
-      }
-      resolve(evt);
-    };
-    script.onerror = function () {
-      reject(new Error(`Cannot load script at: ${script.src}`));
-    };
-    (document.head || document.documentElement).append(script);
-  });
+function noContextMenu(e) {
+  e.preventDefault();
 }
 
 // Deprecated API function -- display regardless of the `verbosity` setting.
@@ -1013,7 +995,6 @@ function setLayerDimensions(
 }
 
 export {
-  AnnotationPrefix,
   deprecated,
   DOMCanvasFactory,
   DOMCMapReaderFactory,
@@ -1030,7 +1011,7 @@ export {
   isDataScheme,
   isPdfFile,
   isValidFetchUrl,
-  loadScript,
+  noContextMenu,
   PageViewport,
   PDFDateString,
   PixelsPerInch,

@@ -13,8 +13,8 @@
  * limitations under the License.
  */
 
-exports.loadAndWait = (filename, selector, zoom, pageSetup) =>
-  Promise.all(
+function loadAndWait(filename, selector, zoom, pageSetup) {
+  return Promise.all(
     global.integrationSessions.map(async session => {
       const page = await session.browser.newPage();
 
@@ -49,38 +49,42 @@ exports.loadAndWait = (filename, selector, zoom, pageSetup) =>
       return [session.name, page];
     })
   );
+}
 
-exports.closePages = pages =>
-  Promise.all(
+function closePages(pages) {
+  return Promise.all(
     pages.map(async ([_, page]) => {
+      // Avoid to keep something from a previous test.
+      await page.evaluate(() => window.localStorage.clear());
       await page.close();
     })
   );
+}
 
-exports.clearInput = async (page, selector) => {
+async function clearInput(page, selector) {
   await page.click(selector);
   await page.keyboard.down("Control");
   await page.keyboard.press("A");
   await page.keyboard.up("Control");
   await page.keyboard.press("Backspace");
   await page.waitForTimeout(10);
-};
+}
 
 function getSelector(id) {
   return `[data-element-id="${id}"]`;
 }
-exports.getSelector = getSelector;
 
 function getQuerySelector(id) {
   return `document.querySelector('${getSelector(id)}')`;
 }
-exports.getQuerySelector = getQuerySelector;
 
 function getComputedStyleSelector(id) {
   return `getComputedStyle(${getQuerySelector(id)})`;
 }
-exports.getComputedStyleSelector = getComputedStyleSelector;
-exports.getEditorSelector = n => `#pdfjs_internal_editor_${n}`;
+
+function getEditorSelector(n) {
+  return `#pdfjs_internal_editor_${n}`;
+}
 
 function getSelectedEditors(page) {
   return page.evaluate(() => {
@@ -93,41 +97,58 @@ function getSelectedEditors(page) {
     return results;
   });
 }
-exports.getSelectedEditors = getSelectedEditors;
 
-async function waitForEvent(page, eventName, timeout = 30000) {
-  await Promise.race([
+async function waitForEvent(page, eventName, timeout = 5000) {
+  const hasTimedout = await Promise.race([
     // add event listener and wait for event to fire before returning
-    page.evaluate(name => {
-      return new Promise(resolve => {
-        document.addEventListener(name, resolve, { once: true });
-      });
-    }, eventName),
-    page.waitForTimeout(timeout),
+    page.evaluate(
+      name =>
+        new Promise(resolve => {
+          document.addEventListener(name, () => resolve(false), { once: true });
+        }),
+      eventName
+    ),
+    page.evaluate(
+      timeOut =>
+        new Promise(resolve => {
+          setTimeout(() => resolve(true), timeOut);
+        }),
+      timeout
+    ),
   ]);
+  if (hasTimedout === true) {
+    console.log(`waitForEvent: timeout waiting for ${eventName}`);
+  }
 }
-exports.waitForEvent = waitForEvent;
 
-const waitForStorageEntries = async (page, nEntries) => {
-  await page.waitForFunction(
+async function waitForStorageEntries(page, nEntries) {
+  return page.waitForFunction(
     n => window.PDFViewerApplication.pdfDocument.annotationStorage.size === n,
     {},
     nEntries
   );
-};
-exports.waitForStorageEntries = waitForStorageEntries;
+}
 
-const waitForSelectedEditor = async (page, selector) => {
-  await page.waitForFunction(
-    sel => document.querySelector(sel).classList.contains("selectedEditor"),
+async function waitForSerialized(page, nEntries) {
+  return page.waitForFunction(
+    n =>
+      (window.PDFViewerApplication.pdfDocument.annotationStorage.serializable
+        .map?.size ?? 0) === n,
     {},
-    selector
+    nEntries
   );
-};
-exports.waitForSelectedEditor = waitForSelectedEditor;
+}
 
-const mockClipboard = async pages => {
-  await Promise.all(
+async function waitForSelectedEditor(page, selector) {
+  return page.waitForSelector(`${selector}.selectedEditor`);
+}
+
+async function waitForUnselectedEditor(page, selector) {
+  return page.waitForSelector(`${selector}:not(.selectedEditor)`);
+}
+
+async function mockClipboard(pages) {
+  return Promise.all(
     pages.map(async ([_, page]) => {
       await page.evaluate(() => {
         let data = null;
@@ -139,8 +160,7 @@ const mockClipboard = async pages => {
       });
     })
   );
-};
-exports.mockClipboard = mockClipboard;
+}
 
 async function getSerialized(page, filter = undefined) {
   const values = await page.evaluate(() => {
@@ -150,11 +170,10 @@ async function getSerialized(page, filter = undefined) {
   });
   return filter ? values.map(filter) : values;
 }
-exports.getSerialized = getSerialized;
 
-const getFirstSerialized = async (page, filter = undefined) =>
-  (await getSerialized(page, filter))[0];
-exports.getFirstSerialized = getFirstSerialized;
+async function getFirstSerialized(page, filter = undefined) {
+  return (await getSerialized(page, filter))[0];
+}
 
 function getEditors(page, kind) {
   return page.evaluate(aKind => {
@@ -166,7 +185,6 @@ function getEditors(page, kind) {
     return results;
   }, kind);
 }
-exports.getEditors = getEditors;
 
 function getEditorDimensions(page, id) {
   return page.evaluate(n => {
@@ -180,9 +198,19 @@ function getEditorDimensions(page, id) {
     };
   }, id);
 }
-exports.getEditorDimensions = getEditorDimensions;
 
-function serializeBitmapDimensions(page) {
+async function serializeBitmapDimensions(page) {
+  await page.waitForFunction(() => {
+    try {
+      const map =
+        window.PDFViewerApplication.pdfDocument.annotationStorage.serializable
+          .map;
+      return !!map;
+    } catch {
+      return false;
+    }
+  });
+
   return page.evaluate(() => {
     const { map } =
       window.PDFViewerApplication.pdfDocument.annotationStorage.serializable;
@@ -193,7 +221,6 @@ function serializeBitmapDimensions(page) {
       : [];
   });
 }
-exports.serializeBitmapDimensions = serializeBitmapDimensions;
 
 async function dragAndDropAnnotation(page, startX, startY, tX, tY) {
   await page.mouse.move(startX, startY);
@@ -201,8 +228,8 @@ async function dragAndDropAnnotation(page, startX, startY, tX, tY) {
   await page.waitForTimeout(10);
   await page.mouse.move(startX + tX, startY + tY);
   await page.mouse.up();
+  await page.waitForSelector("#viewer:not(.noUserSelect)");
 }
-exports.dragAndDropAnnotation = dragAndDropAnnotation;
 
 async function waitForAnnotationEditorLayer(page) {
   return page.evaluate(() => {
@@ -214,4 +241,72 @@ async function waitForAnnotationEditorLayer(page) {
     });
   });
 }
-exports.waitForAnnotationEditorLayer = waitForAnnotationEditorLayer;
+
+async function waitForTextLayer(page) {
+  return page.evaluate(() => {
+    return new Promise(resolve => {
+      window.PDFViewerApplication.eventBus.on("textlayerrendered", resolve);
+    });
+  });
+}
+
+async function scrollIntoView(page, selector) {
+  const promise = page.evaluate(
+    sel =>
+      new Promise(resolve => {
+        const el = document.querySelector(sel);
+        const observer = new IntersectionObserver(
+          () => {
+            observer.disconnect();
+            resolve();
+          },
+          {
+            root: document.querySelector("#viewerContainer"),
+            threshold: 0.1,
+          }
+        );
+        observer.observe(el);
+      }),
+    selector
+  );
+  await page.evaluate(sel => {
+    const element = document.querySelector(sel);
+    element.scrollIntoView({ behavior: "instant", block: "start" });
+  }, selector);
+  await promise;
+  await page.waitForFunction(
+    sel => {
+      const element = document.querySelector(sel);
+      const { top, bottom } = element.getBoundingClientRect();
+      return Math.abs(top) < 100 || Math.abs(bottom - window.innerHeight) < 100;
+    },
+    {},
+    selector
+  );
+}
+
+export {
+  clearInput,
+  closePages,
+  dragAndDropAnnotation,
+  getComputedStyleSelector,
+  getEditorDimensions,
+  getEditors,
+  getEditorSelector,
+  getFirstSerialized,
+  getQuerySelector,
+  getSelectedEditors,
+  getSelector,
+  getSerialized,
+  loadAndWait,
+  mockClipboard,
+  scrollIntoView,
+  serializeBitmapDimensions,
+  waitForAnnotationEditorLayer,
+  waitForEvent,
+  waitForSelectedEditor,
+  waitForSerialized,
+  waitForStorageEntries,
+  waitForTextLayer,
+  waitForUnselectedEditor,
+};

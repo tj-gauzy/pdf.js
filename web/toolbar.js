@@ -19,10 +19,9 @@ import {
   DEFAULT_SCALE_VALUE,
   MAX_SCALE,
   MIN_SCALE,
-  noContextMenuHandler,
   toggleCheckedBtn,
 } from "./ui_utils.js";
-import { AnnotationEditorType } from "pdfjs-lib";
+import { AnnotationEditorType, noContextMenu } from "pdfjs-lib";
 
 const PAGE_NUMBER_LOADING_INDICATOR = "visiblePageIsLoading";
 
@@ -163,7 +162,12 @@ class Toolbar {
     for (const { element, eventName, eventDetails } of this.buttons) {
       element.addEventListener("click", evt => {
         if (eventName !== null) {
-          this.eventBus.dispatch(eventName, { source: this, ...eventDetails });
+          this.eventBus.dispatch(eventName, {
+            source: this,
+            ...eventDetails,
+            // evt.detail is the number of clicks.
+            isFromKeyboard: evt.detail === 0,
+          });
         }
       });
     }
@@ -201,7 +205,7 @@ class Toolbar {
       }
     });
     // Suppress context menus for some controls.
-    scaleSelect.oncontextmenu = noContextMenuHandler;
+    scaleSelect.oncontextmenu = noContextMenu;
 
     this.eventBus._on("localized", () => {
       this.#wasLocalized = true;

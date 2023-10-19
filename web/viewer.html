@@ -33,8 +33,6 @@ See https://github.com/adobe-type-tools/cmap-resources
 <!--#include viewer-snippet-firefox-extension.html-->
 <!--#elif CHROME-->
 <!--#include viewer-snippet-chrome-extension.html-->
-<!--#elif MINIFIED-->
-<!--#include viewer-snippet-minified.html-->
 <!--#else-->
 <!--#include viewer-snippet.html-->
 <!--#endif-->
@@ -46,14 +44,13 @@ See https://github.com/adobe-type-tools/cmap-resources
 <!--#endif-->
 
 <!--#if MOZCENTRAL-->
-<!--<script src="resource://pdf.js/web/viewer.js"></script>-->
-<!--#elif !MINIFIED-->
-<!--<script src="viewer.js"></script>-->
+<!--<script src="resource://pdf.js/web/viewer.mjs" type="module"></script>-->
+<!--#elif !MOZCENTRAL-->
+<!--<script src="viewer.mjs" type="module"></script>-->
 <!--#elif /* Development mode. */-->
     <link rel="resource" type="application/l10n" href="locale/locale.properties">
 
-    <script defer src="../node_modules/es-module-shims/dist/es-module-shims.js"></script>
-    <script type="importmap-shim">
+    <script type="importmap">
       {
         "imports": {
           "pdfjs/": "../src/",
@@ -65,8 +62,8 @@ See https://github.com/adobe-type-tools/cmap-resources
           "display-network": "../src/display/network.js",
           "display-node_stream": "../src/display/stubs.js",
           "display-node_utils": "../src/display/stubs.js",
-          "display-svg": "../src/display/stubs.js",
 
+          "web-alt_text_manager": "./alt_text_manager.js",
           "web-annotation_editor_params": "./annotation_editor_params.js",
           "web-com": "./genericcom.js",
           "web-pdf_attachment_viewer": "./pdf_attachment_viewer.js",
@@ -84,8 +81,7 @@ See https://github.com/adobe-type-tools/cmap-resources
         }
       }
     </script>
-
-    <script src="viewer.js" type="module-shim"></script>
+    <script src="viewer.js" type="module"></script>
 <!--#endif-->
   </head>
 
@@ -351,7 +347,7 @@ See https://github.com/adobe-type-tools/cmap-resources
                   <button id="editorInk" class="toolbarButton" disabled="disabled" title="Draw" role="radio" aria-checked="false" aria-controls="editorInkParamsToolbar" tabindex="35" data-l10n-id="editor_ink2">
                     <span data-l10n-id="editor_ink2_label">Draw</span>
                   </button>
-                  <button id="editorStamp" class="toolbarButton hidden" disabled="disabled" title="Add or edit images" role="radio" aria-checked="false" tabindex="36" data-l10n-id="editor_stamp1">
+                  <button id="editorStamp" class="toolbarButton hidden" disabled="disabled" title="Add or edit images" role="radio" aria-checked="false" aria-controls="editorStampParamsToolbar" tabindex="36" data-l10n-id="editor_stamp1">
                     <span data-l10n-id="editor_stamp1_label">Add or edit images</span>
                   </button>
                 </div>
@@ -480,6 +476,49 @@ See https://github.com/adobe-type-tools/cmap-resources
           </div>
           <div class="buttonRow">
             <button id="documentPropertiesClose" class="dialogButton"><span data-l10n-id="document_properties_close">Close</span></button>
+          </div>
+        </dialog>
+        <dialog id="altTextDialog" aria-labelledby="dialogLabel" aria-describedby="dialogDescription">
+          <div id="altTextContainer">
+            <div id="overallDescription">
+              <span id="dialogLabel" data-l10n-id="editor_alt_text_dialog_label" class="title">Choose an option</span>
+              <span id="dialogDescription" data-l10n-id="editor_alt_text_dialog_description">
+                Alt text (alternative text) helps when people can’t see the image or when it doesn’t load.
+              </span>
+            </div>
+            <div id="addDescription">
+              <div class="radio">
+                <div class="radioButton">
+                  <input type="radio" id="descriptionButton" name="altTextOption" tabindex="0" aria-describedby="descriptionAreaLabel" checked>
+                  <label for="descriptionButton" data-l10n-id="editor_alt_text_add_description_label">Add a description</label>
+                </div>
+                <div class="radioLabel">
+                  <span id="descriptionAreaLabel" data-l10n-id="editor_alt_text_add_description_description">
+                    Aim for 1-2 sentences that describe the subject, setting, or actions.
+                  </span>
+                </div>
+              </div>
+              <div class="descriptionArea">
+                <textarea id="descriptionTextarea" placeholder="For example, “A young man sits down at a table to eat a meal”" aria-labelledby="descriptionAreaLabel" data-l10n-id="editor_alt_text_textarea" tabindex="0"></textarea>
+              </div>
+            </div>
+            <div id="markAsDecorative">
+              <div class="radio">
+                <div class="radioButton">
+                  <input type="radio" id="decorativeButton" name="altTextOption" aria-describedby="decorativeLabel">
+                  <label for="decorativeButton" data-l10n-id="editor_alt_text_mark_decorative_label">Mark as decorative</label>
+                </div>
+                <div class="radioLabel">
+                  <span id="decorativeLabel" data-l10n-id="editor_alt_text_mark_decorative_description">
+                    This is used for ornamental images, like borders or watermarks.
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div id="buttons">
+              <button id="altTextCancel" tabindex="0"><span data-l10n-id="editor_alt_text_cancel_button">Cancel</span></button>
+              <button id="altTextSave" tabindex="0"><span data-l10n-id="editor_alt_text_save_button">Save</span></button>
+            </div>
           </div>
         </dialog>
 <!--#if !MOZCENTRAL-->

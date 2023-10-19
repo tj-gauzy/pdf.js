@@ -45,7 +45,6 @@ import {
   InvalidPDFException,
   isDataScheme,
   isPdfFile,
-  loadScript,
   MissingPDFException,
   PDFWorker,
   PromiseCapability,
@@ -56,6 +55,7 @@ import {
 import { AppOptions as AppOptionsOrigin, OptionKind } from "./app_options.js";
 import { AutomationEventBus, EventBus } from "./event_utils.js";
 import { LinkTarget, PDFLinkService } from "./pdf_link_service.js";
+import { AltTextManager } from "web-alt_text_manager";
 import { AnnotationEditorParams } from "web-annotation_editor_params";
 import { OverlayManager } from "./overlay_manager.js";
 import { PasswordPrompt } from "./password_prompt.js";
@@ -525,6 +525,14 @@ let PDFViewerApplication = {
             foreground: AppOptions.get("pageColorsForeground"),
           }
         : null;
+    const altTextManager = appConfig.altTextDialog
+      ? new AltTextManager(
+          appConfig.altTextDialog,
+          container,
+          this.overlayManager,
+          eventBus
+        )
+      : null;
 
     const pdfViewer = new PDFViewer({
       container,
@@ -533,6 +541,7 @@ let PDFViewerApplication = {
       renderingQueue: pdfRenderingQueue,
       linkService: pdfLinkService,
       downloadManager,
+      altTextManager,
       findController,
       scriptingManager:
         AppOptions.get("enableScripting") && pdfScriptingManager,
@@ -627,8 +636,7 @@ let PDFViewerApplication = {
           appConfig.toolbar,
           eventBus,
           l10n,
-          await this._nimbusDataPromise,
-          externalServices
+          await this._nimbusDataPromise
         );
       } else {
         this.toolbar = new Toolbar(appConfig.toolbar, eventBus, l10n);
@@ -638,8 +646,7 @@ let PDFViewerApplication = {
     if (appConfig.secondaryToolbar) {
       this.secondaryToolbar = new SecondaryToolbar(
         appConfig.secondaryToolbar,
-        eventBus,
-        externalServices
+        eventBus
       );
     }
 
@@ -1054,22 +1061,6 @@ let PDFViewerApplication = {
    * @returns {Promise} - Promise that is resolved when the document is opened.
    */
   async open(args) {
-    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
-      let deprecatedArgs = false;
-      if (typeof args === "string") {
-        args = { url: args }; // URL
-        deprecatedArgs = true;
-      } else if (args?.byteLength) {
-        args = { data: args }; // ArrayBuffer
-        deprecatedArgs = true;
-      }
-      if (deprecatedArgs) {
-        console.error(
-          "The `PDFViewerApplication.open` signature was updated, please use an object instead."
-        );
-      }
-    }
-
     if (this.pdfLoadingTask) {
       // We need to destroy already opened document.
       await this.close();
@@ -1848,7 +1839,9 @@ let PDFViewerApplication = {
     this.pdfViewer.cleanup();
     this.pdfThumbnailViewer?.cleanup();
 
-    this.pdfDocument.cleanup();
+    this.pdfDocument.cleanup(
+      /* keepLoadedFonts = */ AppOptions.get("fontExtraProperties")
+    );
   },
 
   forceRendering() {
@@ -2022,10 +2015,13 @@ let PDFViewerApplication = {
       eventBus._on("openfile", webViewerOpenFile);
     }
     if (typeof PDFJSDev !== "undefined" && PDFJSDev.test("MOZCENTRAL")) {
+      // The `unbindEvents` method is unused in MOZCENTRAL builds,
+      // hence we don't need to unregister these event listeners.
       eventBus._on(
         "annotationeditorstateschanged",
         webViewerAnnotationEditorStatesChanged
       );
+      eventBus._on("reporttelemetry", webViewerReportTelemetry);
     }
   },
 
@@ -2301,10 +2297,10 @@ async function loadFakeWorker() {
   GlobalWorkerOptions.workerSrc ||= AppOptions.get("workerSrc");
 
   if (typeof PDFJSDev === "undefined") {
-    window.pdfjsWorker = await import("pdfjs/pdf.worker.js");
+    globalThis.pdfjsWorker = await import("pdfjs/pdf.worker.js");
     return;
   }
-  await loadScript(PDFWorker.workerSrc);
+  await __non_webpack_import__(PDFWorker.workerSrc);
 }
 
 async function loadPDFBug(self) {
@@ -2751,7 +2747,11 @@ function webViewerWheel(evt) {
     // Only zoom the pages, not the entire viewer.
     evt.preventDefault();
     // NOTE: this check must be placed *after* preventDefault.
-    if (zoomDisabledTimeout || document.visibilityState === "hidden") {
+    if (
+      zoomDisabledTimeout ||
+      document.visibilityState === "hidden" ||
+      PDFViewerApplication.overlayManager.active
+    ) {
       return;
     }
 
@@ -2833,7 +2833,7 @@ function webViewerTouchStart(evt) {
   }
   evt.preventDefault();
 
-  if (evt.touches.length !== 2) {
+  if (evt.touches.length !== 2 || PDFViewerApplication.overlayManager.active) {
     PDFViewerApplication._touchInfo = null;
     return;
   }
@@ -3133,6 +3133,8 @@ function webViewerKeyDown(evt) {
     curElementTagName === "INPUT" ||
     curElementTagName === "TEXTAREA" ||
     curElementTagName === "SELECT" ||
+    (curElementTagName === "BUTTON" &&
+      (evt.keyCode === /* Enter = */ 13 || evt.keyCode === /* Space = */ 32)) ||
     curElement?.isContentEditable
   ) {
     // Make sure that the secondary toolbar is closed when Escape is pressed.
@@ -3310,6 +3312,10 @@ function beforeUnload(evt) {
 
 function webViewerAnnotationEditorStatesChanged(data) {
   PDFViewerApplication.externalServices.updateEditorStates(data);
+}
+
+function webViewerReportTelemetry({ details }) {
+  PDFViewerApplication.externalServices.reportTelemetry(details);
 }
 
 /* Abstract factory for the print service. */
