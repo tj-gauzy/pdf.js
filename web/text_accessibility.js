@@ -248,10 +248,14 @@ class TextAccessibilityManager {
         ) < 0
     );
 
-    if (index === 0) {
-      children[0].before(element);
-    } else {
-      children[index - 1].after(element);
+    try {
+      if (index === 0) {
+        children[0].before(element);
+      } else {
+        children[index - 1].after(element);
+      }
+    } catch {
+      container.append(element);
     }
 
     return id;

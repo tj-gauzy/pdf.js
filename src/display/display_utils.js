@@ -790,6 +790,30 @@ function isValidFetchUrl(url, baseUrl) {
 }
 
 /**
+ * @param {string} src
+ * @param {boolean} removeScriptElement
+ * @returns {Promise<void>}
+ */
+function loadScript(src, removeScriptElement = false) {
+  return new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.type = 'module';
+    script.src = src;
+
+    script.onload = function (evt) {
+      if (removeScriptElement) {
+        script.remove();
+      }
+      resolve(evt);
+    };
+    script.onerror = function () {
+      reject(new Error(`Cannot load script at: ${script.src}`));
+    };
+    (document.head || document.documentElement).append(script);
+  });
+}
+
+/**
  * Event handler to suppress context menu.
  */
 function noContextMenu(e) {
@@ -1011,6 +1035,7 @@ export {
   isDataScheme,
   isPdfFile,
   isValidFetchUrl,
+  loadScript,
   noContextMenu,
   PageViewport,
   PDFDateString,

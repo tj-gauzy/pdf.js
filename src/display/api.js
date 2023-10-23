@@ -51,6 +51,7 @@ import {
   DOMStandardFontDataFactory,
   isDataScheme,
   isValidFetchUrl,
+  loadScript,
   PageViewport,
   RenderingCancelledException,
   StatTimer,
@@ -2306,11 +2307,9 @@ class PDFWorker {
         // The worker was already loaded using e.g. a `<script>` tag.
         return this.#mainThreadWorkerMessageHandler;
       }
-      const worker =
-        typeof PDFJSDev === "undefined"
-          ? await import("pdfjs/pdf.worker.js")
-          : await __non_webpack_import__(this.workerSrc);
-      return worker.WorkerMessageHandler;
+
+      await loadScript(this.workerSrc);
+      return window.pdfjsWorker.WorkerMessageHandler;
     };
 
     return shadow(this, "_setupFakeWorkerGlobal", loader());
@@ -3392,6 +3391,7 @@ export {
   DefaultFilterFactory,
   DefaultStandardFontDataFactory,
   getDocument,
+  loadScript,
   LoopbackPort,
   PDFDataRangeTransport,
   PDFDocumentLoadingTask,

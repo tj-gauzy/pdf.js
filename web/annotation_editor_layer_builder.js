@@ -113,8 +113,8 @@ class AnnotationEditorLayerBuilder {
       return;
     }
     this.pageDiv = null;
-    this.annotationEditorLayer.destroy();
-    this.div.remove();
+    this.annotationEditorLayer?.destroy();
+    this.div?.remove();
   }
 
   hide() {

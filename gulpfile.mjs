@@ -2321,6 +2321,7 @@ gulp.task(
   "build-reader",
   gulp.series(
     function prepareBuild(done) {
+      console.time("build-pdfjs-reader");
       console.log();
       console.log("### Building reader package. Cleaning up first");
 
@@ -2347,7 +2348,22 @@ gulp.task(
       console.log("### Creating minified viewer");
       const defines = builder.merge(DEFINES, { MINIFIED: true, GENERIC: true });
 
-      return buildMinified(defines, MINIFIED_DIR);
+      const dir = MINIFIED_DIR;
+
+      return merge([
+        createWorkerBundle(defines).pipe(gulp.dest(dir + "build")),
+        createSandboxBundle(defines).pipe(gulp.dest(dir + "build")),
+        preprocessCSS("web/viewer.css", defines)
+          .pipe(
+            postcss([
+              postcssDirPseudoClass(),
+              discardCommentsCSS(),
+              postcssNesting(),
+              autoprefixer(AUTOPREFIXER_CONFIG),
+            ])
+          )
+          .pipe(gulp.dest(dir + "web")),
+      ]);
     },
     async function minifyCompression(done) {
       const dir = MINIFIED_DIR;
@@ -2370,6 +2386,7 @@ gulp.task(
         },
         keep_classnames: true,
         keep_fnames: true,
+        module: true,
       };
 
       fs.writeFileSync(
@@ -2397,12 +2414,6 @@ gulp.task(
       return merge([
         packageJson().pipe(gulp.dest(DIST_DIR)),
         gulp
-          .src("external/dist/**/*", {
-            base: "external/dist",
-            removeBOM: false,
-          })
-          .pipe(gulp.dest(DIST_DIR)),
-        gulp
           .src("external/bcmaps/*.bcmap")
           .pipe(gulp.dest(DIST_DIR + "cmaps/")),
         gulp
@@ -2423,6 +2434,23 @@ gulp.task(
         gulp.src("web/locale/**/*").pipe(gulp.dest(DIST_DIR + "web/locale/")),
         gulp.src("web/images/**/*").pipe(gulp.dest(DIST_DIR + "web/images/")),
       ]);
+    },
+    async function (done) {
+      console.log();
+      console.log("### All Build Finished. Cleaning up extra files");
+
+      const dirs = ["lib", "minified", "default_preferences", "tmp"];
+
+      for (const dir of dirs) {
+        const target = BUILD_DIR + dir;
+        if (fs.existsSync(target)) {
+          fs.rm(target, { recursive: true, maxRetries: 10 }, done);
+        }
+      }
+
+      console.timeEnd("build-pdfjs-reader");
+
+      done();
     }
   )
 );
@@ -2440,7 +2468,12 @@ gulp.task("update-reader", () => {
     ),
     preprocessCSS("web/viewer.css", defines)
       .pipe(
-        postcss([postcssDirPseudoClass(), autoprefixer(AUTOPREFIXER_CONFIG)])
+        postcss([
+          postcssDirPseudoClass(),
+          discardCommentsCSS(),
+          postcssNesting(),
+          autoprefixer(AUTOPREFIXER_CONFIG),
+        ])
       )
       .pipe(gulp.dest(DIST_DIR + "web")),
     gulp

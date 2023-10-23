@@ -148,12 +148,13 @@ class FreeTextEditor extends AnnotationEditor {
     AnnotationEditor.initialize(l10n, {
       strings: ["free_text2_default_content", "editor_free_text2_aria_label"],
     });
-    
+
     // Support for web component reader app.
     let documentElement = document.documentElement;
     if (window.ACTIVE_PDF_APP) {
       documentElement = window.ACTIVE_PDF_APP().appConfig.appContainer;
     }
+    const style = getComputedStyle(documentElement);
 
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
       const lineHeight = parseFloat(

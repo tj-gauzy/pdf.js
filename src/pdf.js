@@ -48,6 +48,7 @@ import {
 import {
   build,
   getDocument,
+  loadScript,
   PDFDataRangeTransport,
   PDFWorker,
   SVGGraphics,
@@ -102,6 +103,7 @@ export {
   InvalidPDFException,
   isDataScheme,
   isPdfFile,
+  loadScript,
   MissingPDFException,
   noContextMenu,
   normalizeUnicode,
