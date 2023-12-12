@@ -54,6 +54,7 @@ function addLinkAttributes(link, { url, target, rel, enabled = true } = {}) {
   } else {
     link.href = "javascript:;";
     link.title = `Disabled: ${url}`;
+    link.dataset.href = url;
     link.onclick = () => {
       return false;
     };
