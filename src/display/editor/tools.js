@@ -856,6 +856,10 @@ class AnnotationEditorUIManager {
       !this.#annotationStorage.has(editor.id)
     ) {
       this.#annotationStorage.setValue(editor.id, editor);
+    } else if (!editor.isEmpty() && this.#annotationStorage?.has(editor.id)) {
+      this.#annotationStorage.setValue(editor.id, editor);
+    } else {
+      this.#annotationStorage?.remove(editor.id);
     }
   }
 
@@ -1809,6 +1813,22 @@ class AnnotationEditorUIManager {
 
   get imageManager() {
     return shadow(this, "imageManager", new ImageManager());
+  }
+
+  get idManager() {
+    return this.#idManager;
+  }
+
+  set idManager(idManager) {
+    this.#idManager = idManager;
+  }
+
+  get annotationStorage() {
+    return this.#annotationStorage;
+  }
+
+  set annotationStorage(annotationStorage) {
+    this.#annotationStorage = annotationStorage;
   }
 }
 

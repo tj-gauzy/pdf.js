@@ -2210,6 +2210,10 @@ class PDFViewer {
     ]);
   }
 
+  get annotationEditorUIManager() {
+    return this.#annotationEditorUIManager;
+  }
+
   /**
    * @type {number}
    */
