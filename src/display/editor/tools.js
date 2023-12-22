@@ -1830,6 +1830,18 @@ class AnnotationEditorUIManager {
   set annotationStorage(annotationStorage) {
     this.#annotationStorage = annotationStorage;
   }
+
+  get commandManager() {
+    return this.#commandManager;
+  }
+
+  set commandManager(commandManager) {
+    this.#commandManager = commandManager;
+  }
+
+  get selectedEditors() {
+    return this.#selectedEditors;
+  }
 }
 
 export {
