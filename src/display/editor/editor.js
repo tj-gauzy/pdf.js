@@ -1236,7 +1236,7 @@ class AnnotationEditor {
 
     switch (this.rotation) {
       case 0:
-        return [x1, pageHeight - y2, width, height];
+        return [x1 - width, pageHeight - y2 - height, width, height];
       case 90:
         return [x1, pageHeight - y1, height, width];
       case 180:
