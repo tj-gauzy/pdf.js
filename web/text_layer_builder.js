@@ -279,52 +279,72 @@ class TextLayerBuilder {
     const topRatio = (100 * top) / paperHeight;
     const leftRatio = (100 * left) / paperWidth;
 
-    const img = document.createElement("img");
-    img.classList.add("inlineImage");
-    img.setAttribute(
-      "style",
-      `position: absolute; height: ${hRatio}%; width: ${wRatio}%; top: ${topRatio}%; left: ${leftRatio}%;`
-    );
-
-    img.alt = `${name}.png`;
-    img.id = name;
-
-    img.src = `data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7`;
-
     if (this.imageLayerMode === ImageLayerMode.PLACEHOLDER) {
+      const img = `<img alt="${name}.png" id="${name}" data-index="${this._images.length}" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" class="inlineImage" style="position: absolute; height: ${hRatio}%; width: ${wRatio}%; top: ${topRatio}%; left: ${leftRatio}%;"/>`;
+
       const data = structuredClone(imgData);
-      const load = () => {
-        this.loadImage(img, data).then();
-
-        img.removeEventListener("pointerdown", load);
-        img.removeEventListener("contextmenu", load);
-
-        if (data.bitmap) {
-          data.bitmap.close();
-        }
-      };
-      img.addEventListener("pointerdown", load);
-      img.addEventListener("contextmenu", load);
+      this._images.push({ img, data });
     } else if (this.imageLayerMode === ImageLayerMode.ORIGIN) {
-      this.loadImage(img, imgData).then();
-    }
+      const img = document.createElement("img");
+      img.classList.add("inlineImage");
+      img.setAttribute(
+        "style",
+        `position: absolute; height: ${hRatio}%; width: ${wRatio}%; top: ${topRatio}%; left: ${leftRatio}%;`
+      );
 
-    this._images.append(img);
+      img.alt = `${name}.png`;
+      img.id = name;
+
+      this.loadImage(img, imgData).then();
+      this._images.append(img);
+    }
   }
 
   beginLayout() {
-    this._images = new DocumentFragment();
+    this._images =
+      this.imageLayerMode === ImageLayerMode.ORIGIN
+        ? new DocumentFragment()
+        : [];
   }
 
   endLayout() {
-    if (!this._images || this._images.childElementCount === 0) {
+    if (this.imageLayerMode === ImageLayerMode.ORIGIN) {
+      if (!this._images || this._images.childElementCount === 0) {
+        return;
+      }
+
+      this._imagesCount = this._images.childElementCount;
+      this.div.append(this._images);
+      this._images = null;
+      this._imageLayerRendered = true;
+
       return;
     }
 
-    this._imagesCount = this._images.childElementCount;
-    this.div.append(this._images);
-    this._images = null;
-    this._imageLayerRendered = true;
+    const imageContainer = document.createElement("div");
+    imageContainer.classList.add("inlineImages");
+    // eslint-disable-next-line no-unsanitized/property
+    imageContainer.innerHTML = this._images.map(item => item.img).join("");
+
+    const load = event => {
+      const target = event.target;
+      if (!target.classList.contains("inlineImage") || target.loaded) {
+        return;
+      }
+      const index = parseInt(target.dataset.index || 0);
+      const data = this._images[index].data;
+      this.loadImage(target, data).then();
+      target.loaded = true;
+
+      if (data.bitmap) {
+        data.bitmap.close();
+      }
+    };
+
+    imageContainer.addEventListener("pointerdown", load);
+    imageContainer.addEventListener("contextmenu", load);
+
+    this.div.append(imageContainer);
   }
 }
 
