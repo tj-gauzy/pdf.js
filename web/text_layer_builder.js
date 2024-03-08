@@ -321,6 +321,7 @@ class TextLayerBuilder {
       return;
     }
 
+    this.div.querySelector(".inlineImages")?.remove?.();
     const imageContainer = document.createElement("div");
     imageContainer.classList.add("inlineImages");
     // eslint-disable-next-line no-unsanitized/property
