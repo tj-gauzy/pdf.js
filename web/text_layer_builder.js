@@ -314,7 +314,7 @@ class TextLayerBuilder {
       }
 
       this._imagesCount = this._images.childElementCount;
-      this.div.append(this._images);
+      this.div.prepend(this._images);
       this._images = null;
       this._imageLayerRendered = true;
 
@@ -345,7 +345,7 @@ class TextLayerBuilder {
     imageContainer.addEventListener("pointerdown", load);
     imageContainer.addEventListener("contextmenu", load);
 
-    this.div.append(imageContainer);
+    this.div.prepend(imageContainer);
   }
 }
 
