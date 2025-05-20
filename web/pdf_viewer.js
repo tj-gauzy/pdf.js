@@ -1457,7 +1457,8 @@ class PDFViewer {
       pageView.scale /
       PixelsPerInch.PDF_TO_CSS_UNITS;
     let scale = 0;
-    switch (destArray[1].name) {
+    const destName = destArray[1] ? destArray[1].name : "";
+    switch (destName) {
       case "XYZ":
         x = destArray[2];
         y = destArray[3];
@@ -1521,7 +1522,7 @@ class PDFViewer {
         break;
       default:
         console.error(
-          `scrollPageIntoView: "${destArray[1].name}" is not a valid destination type.`
+          `scrollPageIntoView: "${destName}" is not a valid destination type.`
         );
         return;
     }
