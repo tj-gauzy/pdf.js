@@ -24,11 +24,12 @@ const isNodeJS =
   process + "" === "[object process]" &&
   !process.versions.nw &&
   !(process.versions.electron && process.type && process.type !== "browser");
-  
+
 // Skip compatibility checks if we already ran the module.
 if (typeof PDFJSDev !== "undefined" && !globalThis._pdfjsCompatibilityChecked) {
   globalThis._pdfjsCompatibilityChecked = true;
-  require("./compatibility.js");
+  // Remove compatibility.js
+  // require("./compatibility.js");
 }
 
 const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
