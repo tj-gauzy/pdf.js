@@ -15,15 +15,26 @@
 
 import {
   assert,
+  BBOX_INIT,
   FormatError,
   info,
+  MeshFigureType,
   unreachable,
   Util,
   warn,
 } from "../shared/util.js";
+import {
+  IDENTITY_MATRIX,
+  isBooleanArray,
+  isNumberArray,
+  lookupMatrix,
+  lookupNormalRect,
+  lookupRect,
+  MissingDataException,
+} from "./core_utils.js";
 import { BaseStream } from "./base_stream.js";
-import { ColorSpace } from "./colorspace.js";
-import { MissingDataException } from "./core_utils.js";
+import { ColorSpaceUtils } from "./colorspace_utils.js";
+import { MathClamp } from "../shared/math_clamp.js";
 
 const ShadingType = {
   FUNCTION_BASED: 1,
@@ -36,8 +47,15 @@ const ShadingType = {
 };
 
 class Pattern {
+  // eslint-disable-next-line no-unused-private-class-members
+  static #hasGPU = false;
+
   constructor() {
     unreachable("Cannot initialize Pattern.");
+  }
+
+  static setOptions({ hasGPU }) {
+    this.#hasGPU = hasGPU;
   }
 
   static parseShading(
@@ -45,6 +63,7 @@ class Pattern {
     xref,
     res,
     pdfFunctionFactory,
+    globalColorSpaceCache,
     localColorSpaceCache
   ) {
     const dict = shading instanceof BaseStream ? shading.dict : shading;
@@ -52,6 +71,15 @@ class Pattern {
 
     try {
       switch (type) {
+        case ShadingType.FUNCTION_BASED:
+          return new FunctionBasedShading(
+            dict,
+            xref,
+            res,
+            pdfFunctionFactory,
+            globalColorSpaceCache,
+            localColorSpaceCache
+          );
         case ShadingType.AXIAL:
         case ShadingType.RADIAL:
           return new RadialAxialShading(
@@ -59,6 +87,7 @@ class Pattern {
             xref,
             res,
             pdfFunctionFactory,
+            globalColorSpaceCache,
             localColorSpaceCache
           );
         case ShadingType.FREE_FORM_MESH:
@@ -70,6 +99,7 @@ class Pattern {
             xref,
             res,
             pdfFunctionFactory,
+            globalColorSpaceCache,
             localColorSpaceCache
           );
         default:
@@ -91,7 +121,10 @@ class BaseShading {
   static SMALL_NUMBER = 1e-6;
 
   constructor() {
-    if (this.constructor === BaseShading) {
+    if (
+      (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) &&
+      this.constructor === BaseShading
+    ) {
       unreachable("Cannot initialize BaseShading.");
     }
   }
@@ -104,57 +137,55 @@ class BaseShading {
 // Radial and axial shading have very similar implementations
 // If needed, the implementations can be broken into two classes.
 class RadialAxialShading extends BaseShading {
-  constructor(dict, xref, resources, pdfFunctionFactory, localColorSpaceCache) {
+  constructor(
+    dict,
+    xref,
+    resources,
+    pdfFunctionFactory,
+    globalColorSpaceCache,
+    localColorSpaceCache
+  ) {
     super();
-    this.coordsArr = dict.getArray("Coords");
     this.shadingType = dict.get("ShadingType");
-    const cs = ColorSpace.parse({
+    let coordsLen = 0;
+    if (this.shadingType === ShadingType.AXIAL) {
+      coordsLen = 4;
+    } else if (this.shadingType === ShadingType.RADIAL) {
+      coordsLen = 6;
+    }
+    this.coordsArr = dict.getArray("Coords");
+    if (!isNumberArray(this.coordsArr, coordsLen)) {
+      throw new FormatError("RadialAxialShading: Invalid /Coords array.");
+    }
+    const cs = ColorSpaceUtils.parse({
       cs: dict.getRaw("CS") || dict.getRaw("ColorSpace"),
       xref,
       resources,
       pdfFunctionFactory,
+      globalColorSpaceCache,
       localColorSpaceCache,
     });
-    const bbox = dict.getArray("BBox");
-    this.bbox =
-      Array.isArray(bbox) && bbox.length === 4
-        ? Util.normalizeRect(bbox)
-        : null;
+    this.bbox = lookupNormalRect(dict.getArray("BBox"), null);
 
     let t0 = 0.0,
       t1 = 1.0;
-    if (dict.has("Domain")) {
-      const domainArr = dict.getArray("Domain");
-      t0 = domainArr[0];
-      t1 = domainArr[1];
+    const domainArr = dict.getArray("Domain");
+    if (isNumberArray(domainArr, 2)) {
+      [t0, t1] = domainArr;
     }
 
     let extendStart = false,
       extendEnd = false;
-    if (dict.has("Extend")) {
-      const extendArr = dict.getArray("Extend");
-      extendStart = extendArr[0];
-      extendEnd = extendArr[1];
-    }
-
-    if (
-      this.shadingType === ShadingType.RADIAL &&
-      (!extendStart || !extendEnd)
-    ) {
-      // Radial gradient only currently works if either circle is fully within
-      // the other circle.
-      const [x1, y1, r1, x2, y2, r2] = this.coordsArr;
-      const distance = Math.hypot(x1 - x2, y1 - y2);
-      if (r1 <= r2 + distance && r2 <= r1 + distance) {
-        warn("Unsupported radial gradient.");
-      }
+    const extendArr = dict.getArray("Extend");
+    if (isBooleanArray(extendArr, 2)) {
+      [extendStart, extendEnd] = extendArr;
     }
 
     this.extendStart = extendStart;
     this.extendEnd = extendEnd;
 
     const fnObj = dict.getRaw("Function");
-    const fn = pdfFunctionFactory.createFromArray(fnObj);
+    const fn = pdfFunctionFactory.create(fnObj, /* parseArray = */ true);
 
     // Use lcm(1,2,3,4,5,6,7,8,10) = 840 (including 9 increases this to 2520)
     // to catch evenly spaced stops. oeis.org/A003418
@@ -173,19 +204,20 @@ class RadialAxialShading extends BaseShading {
 
     const color = new Float32Array(cs.numComps),
       ratio = new Float32Array(1);
-    let rgbColor;
 
     let iBase = 0;
     ratio[0] = t0;
     fn(ratio, 0, color, 0);
-    let rgbBase = cs.getRgb(color, 0);
-    const cssColorBase = Util.makeHexColor(rgbBase[0], rgbBase[1], rgbBase[2]);
-    colorStops.push([0, cssColorBase]);
+    const rgbBuffer = new Uint8ClampedArray(3);
+    cs.getRgb(color, 0, rgbBuffer);
+    let [rBase, gBase, bBase] = rgbBuffer;
+    colorStops.push([0, Util.makeHexColor(rBase, gBase, bBase)]);
 
     let iPrev = 1;
     ratio[0] = t0 + step;
     fn(ratio, 0, color, 0);
-    let rgbPrev = cs.getRgb(color, 0);
+    cs.getRgb(color, 0, rgbBuffer);
+    let [rPrev, gPrev, bPrev] = rgbBuffer;
 
     // Slopes are rise / run.
     // A max slope is from the least value the base component could have been
@@ -196,28 +228,29 @@ class RadialAxialShading extends BaseShading {
     // so the conservative deltas are +-1 (+-.5 for base and -+.5 for current).
 
     // The run is iPrev - iBase = 1, so omitted.
-    let maxSlopeR = rgbPrev[0] - rgbBase[0] + 1;
-    let maxSlopeG = rgbPrev[1] - rgbBase[1] + 1;
-    let maxSlopeB = rgbPrev[2] - rgbBase[2] + 1;
-    let minSlopeR = rgbPrev[0] - rgbBase[0] - 1;
-    let minSlopeG = rgbPrev[1] - rgbBase[1] - 1;
-    let minSlopeB = rgbPrev[2] - rgbBase[2] - 1;
+    let maxSlopeR = rPrev - rBase + 1;
+    let maxSlopeG = gPrev - gBase + 1;
+    let maxSlopeB = bPrev - bBase + 1;
+    let minSlopeR = rPrev - rBase - 1;
+    let minSlopeG = gPrev - gBase - 1;
+    let minSlopeB = bPrev - bBase - 1;
 
     for (let i = 2; i < NUMBER_OF_SAMPLES; i++) {
       ratio[0] = t0 + i * step;
       fn(ratio, 0, color, 0);
-      rgbColor = cs.getRgb(color, 0);
+      cs.getRgb(color, 0, rgbBuffer);
+      const [r, g, b] = rgbBuffer;
 
       // Keep going if the maximum minimum slope <= the minimum maximum slope.
       // Otherwise add a rgbPrev color stop and make it the new base.
 
       const run = i - iBase;
-      maxSlopeR = Math.min(maxSlopeR, (rgbColor[0] - rgbBase[0] + 1) / run);
-      maxSlopeG = Math.min(maxSlopeG, (rgbColor[1] - rgbBase[1] + 1) / run);
-      maxSlopeB = Math.min(maxSlopeB, (rgbColor[2] - rgbBase[2] + 1) / run);
-      minSlopeR = Math.max(minSlopeR, (rgbColor[0] - rgbBase[0] - 1) / run);
-      minSlopeG = Math.max(minSlopeG, (rgbColor[1] - rgbBase[1] - 1) / run);
-      minSlopeB = Math.max(minSlopeB, (rgbColor[2] - rgbBase[2] - 1) / run);
+      maxSlopeR = Math.min(maxSlopeR, (r - rBase + 1) / run);
+      maxSlopeG = Math.min(maxSlopeG, (g - gBase + 1) / run);
+      maxSlopeB = Math.min(maxSlopeB, (b - bBase + 1) / run);
+      minSlopeR = Math.max(minSlopeR, (r - rBase - 1) / run);
+      minSlopeG = Math.max(minSlopeG, (g - gBase - 1) / run);
+      minSlopeB = Math.max(minSlopeB, (b - bBase - 1) / run);
 
       const slopesExist =
         minSlopeR <= maxSlopeR &&
@@ -225,34 +258,36 @@ class RadialAxialShading extends BaseShading {
         minSlopeB <= maxSlopeB;
 
       if (!slopesExist) {
-        const cssColor = Util.makeHexColor(rgbPrev[0], rgbPrev[1], rgbPrev[2]);
+        const cssColor = Util.makeHexColor(rPrev, gPrev, bPrev);
         colorStops.push([iPrev / NUMBER_OF_SAMPLES, cssColor]);
 
         // TODO: When fn frequency is high (iPrev - iBase === 1 twice in a row),
         // send the color space and function to do the sampling display side.
 
         // The run is i - iPrev = 1, so omitted.
-        maxSlopeR = rgbColor[0] - rgbPrev[0] + 1;
-        maxSlopeG = rgbColor[1] - rgbPrev[1] + 1;
-        maxSlopeB = rgbColor[2] - rgbPrev[2] + 1;
-        minSlopeR = rgbColor[0] - rgbPrev[0] - 1;
-        minSlopeG = rgbColor[1] - rgbPrev[1] - 1;
-        minSlopeB = rgbColor[2] - rgbPrev[2] - 1;
+        maxSlopeR = r - rPrev + 1;
+        maxSlopeG = g - gPrev + 1;
+        maxSlopeB = b - bPrev + 1;
+        minSlopeR = r - rPrev - 1;
+        minSlopeG = g - gPrev - 1;
+        minSlopeB = b - bPrev - 1;
 
         iBase = iPrev;
-        rgbBase = rgbPrev;
+        rBase = rPrev;
+        gBase = gPrev;
+        bBase = bPrev;
       }
 
       iPrev = i;
-      rgbPrev = rgbColor;
+      rPrev = r;
+      gPrev = g;
+      bPrev = b;
     }
-    const cssColor = Util.makeHexColor(rgbPrev[0], rgbPrev[1], rgbPrev[2]);
-    colorStops.push([1, cssColor]);
+    colorStops.push([1, Util.makeHexColor(rPrev, gPrev, bPrev)]);
 
     let background = "transparent";
     if (dict.has("Background")) {
-      rgbColor = cs.getRgb(dict.get("Background"), 0);
-      background = Util.makeHexColor(rgbColor[0], rgbColor[1], rgbColor[2]);
+      background = cs.getRgbHex(dict.get("Background"), 0);
     }
 
     if (!extendStart) {
@@ -271,8 +306,7 @@ class RadialAxialShading extends BaseShading {
   }
 
   getIR() {
-    const coordsArr = this.coordsArr;
-    const shadingType = this.shadingType;
+    const { coordsArr, shadingType } = this;
     let type, p0, p1, r0, r1;
     if (shadingType === ShadingType.AXIAL) {
       p0 = [coordsArr[0], coordsArr[1]];
@@ -291,6 +325,176 @@ class RadialAxialShading extends BaseShading {
     }
 
     return ["RadialAxial", type, this.bbox, this.colorStops, p0, p1, r0, r1];
+  }
+}
+
+// Helpers for MeshShading, which builds its mesh from a stream.
+function meshUpdateBounds(self) {
+  let minX = self.coords[0][0],
+    minY = self.coords[0][1],
+    maxX = minX,
+    maxY = minY;
+  for (let i = 1, ii = self.coords.length; i < ii; i++) {
+    const x = self.coords[i][0],
+      y = self.coords[i][1];
+    minX = minX > x ? x : minX;
+    minY = minY > y ? y : minY;
+    maxX = maxX < x ? x : maxX;
+    maxY = maxY < y ? y : maxY;
+  }
+  self.bounds = [minX, minY, maxX, maxY];
+}
+
+function meshPackData(self) {
+  let i, j, ii;
+
+  const coords = self.coords;
+  const coordsPacked = new Float32Array(coords.length * 2);
+  for (i = 0, j = 0, ii = coords.length; i < ii; i++) {
+    const xy = coords[i];
+    coordsPacked[j++] = xy[0];
+    coordsPacked[j++] = xy[1];
+  }
+  self.coords = coordsPacked;
+
+  // Stride 4 (RGB + 1 padding byte) so each color fits in one u32, letting
+  // the WebGPU vertex shader read colors as array<u32> without repacking.
+  const colors = self.colors;
+  const colorsPacked = new Uint8Array(colors.length * 4);
+  for (i = 0, j = 0, ii = colors.length; i < ii; i++) {
+    const c = colors[i];
+    colorsPacked[j++] = c[0];
+    colorsPacked[j++] = c[1];
+    colorsPacked[j++] = c[2];
+    j++; // alpha — unused, stays 0
+  }
+  self.colors = colorsPacked;
+
+  // Store raw vertex indices (not byte offsets) so the GPU shader can
+  // address coords / colors without knowing their strides, and so the
+  // arrays are transferable Uint32Arrays.
+  for (const figure of self.figures) {
+    figure.coords = new Uint32Array(figure.coords);
+    figure.colors = new Uint32Array(figure.colors);
+  }
+}
+
+// Type 1 shading: a 2-in, n-out function sampled over a rectangular domain.
+class FunctionBasedShading extends BaseShading {
+  // Maximum grid steps per axis to avoid huge meshes.
+  static MAX_STEP_COUNT = 512;
+
+  constructor(
+    dict,
+    xref,
+    resources,
+    pdfFunctionFactory,
+    globalColorSpaceCache,
+    localColorSpaceCache
+  ) {
+    super();
+    this.bbox = lookupNormalRect(dict.getArray("BBox"), null);
+
+    const cs = ColorSpaceUtils.parse({
+      cs: dict.getRaw("CS") || dict.getRaw("ColorSpace"),
+      xref,
+      resources,
+      pdfFunctionFactory,
+      globalColorSpaceCache,
+      localColorSpaceCache,
+    });
+    this.background = dict.has("Background")
+      ? cs.getRgb(dict.get("Background"), 0)
+      : null;
+
+    const fnObj = dict.getRaw("Function");
+    if (!fnObj) {
+      throw new FormatError("FunctionBasedShading: missing /Function");
+    }
+    const fn = pdfFunctionFactory.create(fnObj, /* parseArray = */ true);
+
+    // Domain [x0, x1, y0, y1]; defaults to [0, 1, 0, 1].
+    const [x0, x1, y0, y1] = lookupRect(dict.getArray("Domain"), [0, 1, 0, 1]);
+
+    // Matrix maps shading (domain) space to user space; defaults to identity.
+    const matrix = lookupMatrix(dict.getArray("Matrix"), IDENTITY_MATRIX);
+
+    // Transform the four domain corners to find the user-space bounding box.
+    this.bounds = BBOX_INIT.slice();
+    Util.axialAlignedBoundingBox([x0, y0, x1, y1], matrix, this.bounds);
+
+    const bboxW = this.bounds[2] - this.bounds[0];
+    const bboxH = this.bounds[3] - this.bounds[1];
+
+    // 1 step per user-space unit, capped for performance.
+    const stepsX = MathClamp(
+      Math.ceil(bboxW),
+      1,
+      FunctionBasedShading.MAX_STEP_COUNT
+    );
+    const stepsY = MathClamp(
+      Math.ceil(bboxH),
+      1,
+      FunctionBasedShading.MAX_STEP_COUNT
+    );
+
+    const verticesPerRow = stepsX + 1;
+    const totalVertices = (stepsY + 1) * verticesPerRow;
+    const coords = (this.coords = new Float32Array(totalVertices * 2));
+    const colors = (this.colors = new Uint8ClampedArray(totalVertices * 4));
+
+    const xyBuf = new Float32Array(2);
+    const colorBuf = new Float32Array(cs.numComps);
+    const rangeX = (x1 - x0) / stepsX;
+    const rangeY = (y1 - y0) / stepsY;
+    const halfStepX = rangeX / 2;
+    const halfStepY = rangeY / 2;
+    let coordOffset = 0;
+    let colorOffset = 0;
+    for (let row = 0; row <= stepsY; row++) {
+      const yDomain = y0 + rangeY * row;
+      // Evaluate half a step inside at boundary vertices to avoid a spurious
+      // strip for discontinuous functions; vertex positions stay unchanged.
+      xyBuf[1] = row === stepsY ? yDomain - halfStepY : yDomain;
+      for (let col = 0; col <= stepsX; col++) {
+        const xDomain = x0 + rangeX * col;
+        xyBuf[0] = col === stepsX ? xDomain - halfStepX : xDomain;
+        fn(xyBuf, 0, colorBuf, 0);
+        coords[coordOffset] = xDomain;
+        coords[coordOffset + 1] = yDomain;
+        Util.applyTransform(coords, matrix, coordOffset);
+        coordOffset += 2;
+
+        cs.getRgbItem(colorBuf, 0, colors, colorOffset);
+        colorOffset += 4; // alpha — unused, stays 0
+      }
+    }
+
+    const ps = new Uint32Array(totalVertices);
+    for (let i = 0; i < totalVertices; i++) {
+      ps[i] = i;
+    }
+    this.figures = [
+      {
+        type: MeshFigureType.LATTICE,
+        coords: ps,
+        colors: new Uint32Array(ps),
+        verticesPerRow,
+      },
+    ];
+  }
+
+  getIR() {
+    return [
+      "Mesh",
+      ShadingType.FUNCTION_BASED,
+      this.coords,
+      this.colors,
+      this.figures,
+      this.bounds,
+      this.bbox,
+      this.background,
+    ];
   }
 }
 
@@ -328,24 +532,19 @@ class MeshStreamReader {
   }
 
   readBits(n) {
-    let buffer = this.buffer;
-    let bufferLength = this.bufferLength;
+    const { stream } = this;
+    let { buffer, bufferLength } = this;
+
     if (n === 32) {
       if (bufferLength === 0) {
-        return (
-          ((this.stream.getByte() << 24) |
-            (this.stream.getByte() << 16) |
-            (this.stream.getByte() << 8) |
-            this.stream.getByte()) >>>
-          0
-        );
+        return stream.getInt32() >>> 0;
       }
       buffer =
         (buffer << 24) |
-        (this.stream.getByte() << 16) |
-        (this.stream.getByte() << 8) |
-        this.stream.getByte();
-      const nextByte = this.stream.getByte();
+        (stream.getByte() << 16) |
+        (stream.getByte() << 8) |
+        stream.getByte();
+      const nextByte = stream.getByte();
       this.buffer = nextByte & ((1 << bufferLength) - 1);
       return (
         ((buffer << (8 - bufferLength)) |
@@ -354,10 +553,10 @@ class MeshStreamReader {
       );
     }
     if (n === 8 && bufferLength === 0) {
-      return this.stream.getByte();
+      return stream.getByte();
     }
     while (bufferLength < n) {
-      buffer = (buffer << 8) | this.stream.getByte();
+      buffer = (buffer << 8) | stream.getByte();
       bufferLength += 8;
     }
     bufferLength -= n;
@@ -376,10 +575,9 @@ class MeshStreamReader {
   }
 
   readCoordinate() {
-    const bitsPerCoordinate = this.context.bitsPerCoordinate;
+    const { bitsPerCoordinate, decode } = this.context;
     const xi = this.readBits(bitsPerCoordinate);
     const yi = this.readBits(bitsPerCoordinate);
-    const decode = this.context.decode;
     const scale =
       bitsPerCoordinate < 32
         ? 1 / ((1 << bitsPerCoordinate) - 1)
@@ -391,23 +589,20 @@ class MeshStreamReader {
   }
 
   readComponents() {
-    const numComps = this.context.numComps;
-    const bitsPerComponent = this.context.bitsPerComponent;
+    const { bitsPerComponent, colorFn, colorSpace, decode, numComps } =
+      this.context;
     const scale =
       bitsPerComponent < 32
         ? 1 / ((1 << bitsPerComponent) - 1)
         : 2.3283064365386963e-10; // 2 ^ -32
-    const decode = this.context.decode;
     const components = this.tmpCompsBuf;
     for (let i = 0, j = 4; i < numComps; i++, j += 2) {
       const ci = this.readBits(bitsPerComponent);
       components[i] = ci * scale * (decode[j + 1] - decode[j]) + decode[j];
     }
     const color = this.tmpCsCompsBuf;
-    if (this.context.colorFn) {
-      this.context.colorFn(components, 0, color, 0);
-    }
-    return this.context.colorSpace.getRgb(color, 0);
+    colorFn?.(components, 0, color, 0);
+    return colorSpace.getRgb(color, 0);
   }
 }
 
@@ -445,6 +640,7 @@ class MeshShading extends BaseShading {
     xref,
     resources,
     pdfFunctionFactory,
+    globalColorSpaceCache,
     localColorSpaceCache
   ) {
     super();
@@ -453,16 +649,13 @@ class MeshShading extends BaseShading {
     }
     const dict = stream.dict;
     this.shadingType = dict.get("ShadingType");
-    const bbox = dict.getArray("BBox");
-    this.bbox =
-      Array.isArray(bbox) && bbox.length === 4
-        ? Util.normalizeRect(bbox)
-        : null;
-    const cs = ColorSpace.parse({
+    this.bbox = lookupNormalRect(dict.getArray("BBox"), null);
+    const cs = ColorSpaceUtils.parse({
       cs: dict.getRaw("CS") || dict.getRaw("ColorSpace"),
       xref,
       resources,
       pdfFunctionFactory,
+      globalColorSpaceCache,
       localColorSpaceCache,
     });
     this.background = dict.has("Background")
@@ -470,7 +663,9 @@ class MeshShading extends BaseShading {
       : null;
 
     const fnObj = dict.getRaw("Function");
-    const fn = fnObj ? pdfFunctionFactory.createFromArray(fnObj) : null;
+    const fn = fnObj
+      ? pdfFunctionFactory.create(fnObj, /* parseArray = */ true)
+      : null;
 
     this.coords = [];
     this.colors = [];
@@ -563,7 +758,7 @@ class MeshShading extends BaseShading {
       reader.align();
     }
     this.figures.push({
-      type: "triangles",
+      type: MeshFigureType.TRIANGLES,
       coords: new Int32Array(ps),
       colors: new Int32Array(ps),
     });
@@ -581,7 +776,7 @@ class MeshShading extends BaseShading {
       colors.push(color);
     }
     this.figures.push({
-      type: "lattice",
+      type: MeshFigureType.LATTICE,
       coords: new Int32Array(ps),
       colors: new Int32Array(ps),
       verticesPerRow,
@@ -713,7 +908,7 @@ class MeshShading extends BaseShading {
           9,
       ]);
       this.figures.push({
-        type: "patch",
+        type: MeshFigureType.PATCH,
         coords: new Int32Array(ps), // making copies of ps and cs
         colors: new Int32Array(cs),
       });
@@ -783,7 +978,7 @@ class MeshShading extends BaseShading {
           break;
       }
       this.figures.push({
-        type: "patch",
+        type: MeshFigureType.PATCH,
         coords: new Int32Array(ps), // making copies of ps and cs
         colors: new Int32Array(cs),
       });
@@ -792,7 +987,10 @@ class MeshShading extends BaseShading {
 
   _buildFigureFromPatch(index) {
     const figure = this.figures[index];
-    assert(figure.type === "patch", "Unexpected patch mesh figure");
+    assert(
+      figure.type === MeshFigureType.PATCH,
+      "Unexpected patch mesh figure"
+    );
 
     const coords = this.coords,
       colors = this.colors;
@@ -827,17 +1025,19 @@ class MeshShading extends BaseShading {
       ((figureMaxX - figureMinX) * MeshShading.TRIANGLE_DENSITY) /
         (this.bounds[2] - this.bounds[0])
     );
-    splitXBy = Math.max(
+    splitXBy = MathClamp(
+      splitXBy,
       MeshShading.MIN_SPLIT_PATCH_CHUNKS_AMOUNT,
-      Math.min(MeshShading.MAX_SPLIT_PATCH_CHUNKS_AMOUNT, splitXBy)
+      MeshShading.MAX_SPLIT_PATCH_CHUNKS_AMOUNT
     );
     let splitYBy = Math.ceil(
       ((figureMaxY - figureMinY) * MeshShading.TRIANGLE_DENSITY) /
         (this.bounds[3] - this.bounds[1])
     );
-    splitYBy = Math.max(
+    splitYBy = MathClamp(
+      splitYBy,
       MeshShading.MIN_SPLIT_PATCH_CHUNKS_AMOUNT,
-      Math.min(MeshShading.MAX_SPLIT_PATCH_CHUNKS_AMOUNT, splitYBy)
+      MeshShading.MAX_SPLIT_PATCH_CHUNKS_AMOUNT
     );
 
     const verticesPerRow = splitXBy + 1;
@@ -898,7 +1098,7 @@ class MeshShading extends BaseShading {
     figureColors[verticesPerRow * splitYBy + splitXBy] = ci[3];
 
     this.figures[index] = {
-      type: "lattice",
+      type: MeshFigureType.LATTICE,
       coords: figureCoords,
       colors: figureColors,
       verticesPerRow,
@@ -906,53 +1106,11 @@ class MeshShading extends BaseShading {
   }
 
   _updateBounds() {
-    let minX = this.coords[0][0],
-      minY = this.coords[0][1],
-      maxX = minX,
-      maxY = minY;
-    for (let i = 1, ii = this.coords.length; i < ii; i++) {
-      const x = this.coords[i][0],
-        y = this.coords[i][1];
-      minX = minX > x ? x : minX;
-      minY = minY > y ? y : minY;
-      maxX = maxX < x ? x : maxX;
-      maxY = maxY < y ? y : maxY;
-    }
-    this.bounds = [minX, minY, maxX, maxY];
+    meshUpdateBounds(this);
   }
 
   _packData() {
-    let i, ii, j, jj;
-
-    const coords = this.coords;
-    const coordsPacked = new Float32Array(coords.length * 2);
-    for (i = 0, j = 0, ii = coords.length; i < ii; i++) {
-      const xy = coords[i];
-      coordsPacked[j++] = xy[0];
-      coordsPacked[j++] = xy[1];
-    }
-    this.coords = coordsPacked;
-
-    const colors = this.colors;
-    const colorsPacked = new Uint8Array(colors.length * 3);
-    for (i = 0, j = 0, ii = colors.length; i < ii; i++) {
-      const c = colors[i];
-      colorsPacked[j++] = c[0];
-      colorsPacked[j++] = c[1];
-      colorsPacked[j++] = c[2];
-    }
-    this.colors = colorsPacked;
-
-    const figures = this.figures;
-    for (i = 0, ii = figures.length; i < ii; i++) {
-      const figure = figures[i],
-        ps = figure.coords,
-        cs = figure.colors;
-      for (j = 0, jj = ps.length; j < jj; j++) {
-        ps[j] *= 2;
-        cs[j] *= 3;
-      }
-    }
+    meshPackData(this);
   }
 
   getIR() {
@@ -975,18 +1133,29 @@ class DummyShading extends BaseShading {
   }
 }
 
-function getTilingPatternIR(operatorList, dict, color) {
-  const matrix = dict.getArray("Matrix");
-  const bbox = Util.normalizeRect(dict.getArray("BBox"));
-  const xstep = dict.get("XStep");
-  const ystep = dict.get("YStep");
-  const paintType = dict.get("PaintType");
-  const tilingType = dict.get("TilingType");
-
+function getTilingPatternIR(operatorList, dict, color, needsIsolation = true) {
+  const matrix = lookupMatrix(dict.getArray("Matrix"), IDENTITY_MATRIX);
+  const bbox = lookupNormalRect(dict.getArray("BBox"), null);
   // Ensure that the pattern has a non-zero width and height, to prevent errors
   // in `pattern_helper.js` (fixes issue8330.pdf).
-  if (bbox[2] - bbox[0] === 0 || bbox[3] - bbox[1] === 0) {
-    throw new FormatError(`Invalid getTilingPatternIR /BBox array: [${bbox}].`);
+  if (!bbox || bbox[2] - bbox[0] === 0 || bbox[3] - bbox[1] === 0) {
+    throw new FormatError(`Invalid getTilingPatternIR /BBox array.`);
+  }
+  const xstep = dict.get("XStep");
+  if (typeof xstep !== "number") {
+    throw new FormatError(`Invalid getTilingPatternIR /XStep value.`);
+  }
+  const ystep = dict.get("YStep");
+  if (typeof ystep !== "number") {
+    throw new FormatError(`Invalid getTilingPatternIR /YStep value.`);
+  }
+  const paintType = dict.get("PaintType");
+  if (!Number.isInteger(paintType)) {
+    throw new FormatError(`Invalid getTilingPatternIR /PaintType value.`);
+  }
+  const tilingType = dict.get("TilingType");
+  if (!Number.isInteger(tilingType)) {
+    throw new FormatError(`Invalid getTilingPatternIR /TilingType value.`);
   }
 
   return [
@@ -999,6 +1168,7 @@ function getTilingPatternIR(operatorList, dict, color) {
     ystep,
     paintType,
     tilingType,
+    needsIsolation,
   ];
 }
 

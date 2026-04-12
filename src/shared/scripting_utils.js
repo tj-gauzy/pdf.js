@@ -20,14 +20,16 @@
  *              unexpected/unnecessary size increase of the *built* files.
  */
 
+import { MathClamp } from "../shared/math_clamp.js";
+
 function makeColorComp(n) {
-  return Math.floor(Math.max(0, Math.min(1, n)) * 255)
+  return Math.floor(MathClamp(n, 0, 1) * 255)
     .toString(16)
     .padStart(2, "0");
 }
 
 function scaleAndClamp(x) {
-  return Math.max(0, Math.min(255, 255 * x));
+  return MathClamp(x, 0, 1) * 255;
 }
 
 // PDF specifications section 10.3
@@ -105,4 +107,22 @@ class ColorConverters {
   }
 }
 
-export { ColorConverters };
+const DateFormats = [
+  "m/d",
+  "m/d/yy",
+  "mm/dd/yy",
+  "mm/yy",
+  "d-mmm",
+  "d-mmm-yy",
+  "dd-mmm-yy",
+  "yy-mm-dd",
+  "mmm-yy",
+  "mmmm-yy",
+  "mmm d, yyyy",
+  "mmmm d, yyyy",
+  "m/d/yy h:MM tt",
+  "m/d/yy HH:MM",
+];
+const TimeFormats = ["HH:MM", "h:MM tt", "HH:MM:ss", "h:MM:ss tt"];
+
+export { ColorConverters, DateFormats, TimeFormats };

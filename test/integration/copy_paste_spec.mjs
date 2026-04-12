@@ -15,18 +15,19 @@
 
 import {
   closePages,
+  copy,
+  kbSelectAll,
   loadAndWait,
   mockClipboard,
   waitForEvent,
-  waitForTextLayer,
 } from "./test_utils.mjs";
 
 const selectAll = async page => {
-  const promise = waitForEvent(page, "selectionchange");
-  await page.keyboard.down("Control");
-  await page.keyboard.press("a");
-  await page.keyboard.up("Control");
-  await promise;
+  await waitForEvent({
+    page,
+    eventName: "selectionchange",
+    action: () => kbSelectAll(page),
+  });
 
   await page.waitForFunction(() => {
     const selection = document.getSelection();
@@ -39,36 +40,24 @@ describe("Copy and paste", () => {
   describe("all text", () => {
     let pages;
 
-    beforeAll(async () => {
-      pages = await loadAndWait(
-        "tracemonkey.pdf",
-        "#hiddenCopyElement",
-        100,
-        async page => {
-          await page.waitForFunction(
-            () => !!window.PDFViewerApplication.eventBus
-          );
-          await waitForTextLayer(page);
-        }
-      );
+    beforeEach(async () => {
+      pages = await loadAndWait("tracemonkey.pdf", "#hiddenCopyElement", 100);
       await mockClipboard(pages);
     });
 
-    afterAll(async () => {
+    afterEach(async () => {
       await closePages(pages);
     });
 
     it("must check that we've all the contents on copy/paste", async () => {
       await Promise.all(
         pages.map(async ([browserName, page]) => {
+          await page.waitForSelector(
+            ".page[data-page-number='1'] .textLayer .endOfContent"
+          );
           await selectAll(page);
 
-          const promise = waitForEvent(page, "copy");
-          await page.keyboard.down("Control");
-          await page.keyboard.press("c");
-          await page.keyboard.up("Control");
-          await promise;
-
+          await copy(page);
           await page.waitForFunction(
             `document.querySelector('#viewerContainer').style.cursor !== "wait"`
           );
@@ -148,36 +137,28 @@ describe("Copy and paste", () => {
   describe("Copy/paste and ligatures", () => {
     let pages;
 
-    beforeAll(async () => {
+    beforeEach(async () => {
       pages = await loadAndWait(
         "copy_paste_ligatures.pdf",
         "#hiddenCopyElement",
-        100,
-        async page => {
-          await page.waitForFunction(
-            () => !!window.PDFViewerApplication.eventBus
-          );
-          await waitForTextLayer(page);
-        }
+        100
       );
       await mockClipboard(pages);
     });
 
-    afterAll(async () => {
+    afterEach(async () => {
       await closePages(pages);
     });
 
     it("must check that the ligatures have been removed when the text has been copied", async () => {
       await Promise.all(
         pages.map(async ([browserName, page]) => {
+          await page.waitForSelector(
+            ".page[data-page-number='1'] .textLayer .endOfContent"
+          );
           await selectAll(page);
 
-          const promise = waitForEvent(page, "copy");
-          await page.keyboard.down("Control");
-          await page.keyboard.press("c");
-          await page.keyboard.up("Control");
-          await promise;
-
+          await copy(page);
           await page.waitForFunction(
             `document.querySelector('#viewerContainer').style.cursor !== "wait"`
           );

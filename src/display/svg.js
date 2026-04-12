@@ -14,10 +14,10 @@
  */
 /* globals __non_webpack_require__ */
 
-import { deprecated, DOMSVGFactory } from "./display_utils.js";
+import { deprecated } from "./display_utils.js";
+import { DOMSVGFactory } from "./svg_factory.js";
 import {
   FONT_IDENTITY_MATRIX,
-  IDENTITY_MATRIX,
   ImageKind,
   isNodeJS,
   OPS,
@@ -25,6 +25,7 @@ import {
   Util,
   warn,
 } from "../shared/util.js";
+const IDENTITY_MATRIX = [1, 0, 0, 1, 0, 0];
 
 if (typeof PDFJSDev !== "undefined" && !PDFJSDev.test("GENERIC")) {
   throw new Error(

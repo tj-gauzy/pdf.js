@@ -11,25 +11,28 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
 
+    strategy:
+      matrix:
+        node-version: [lts/*]
+
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
 
-      - name: Use Node.js 18 LTS
-        uses: actions/setup-node@v3
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
-          node-version: '18'
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
 
-      - name: Install Gulp
-        run: npm install -g gulp-cli
-
-      - name: Install other dependencies
-        run: npm install
+      - name: Install dependencies
+        run: npm ci
 
       - name: Build the website
-        run: gulp web
+        run: npx gulp web
 
       - name: Archive the website
         shell: sh
@@ -48,7 +51,7 @@ jobs:
           INPUT_PATH: build/gh-pages
 
       - name: Upload the website
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
         with:
           name: github-pages
           path: ${{ runner.temp }}/website.tar
@@ -65,4 +68,4 @@ jobs:
 
     steps:
       - name: Deploy the website
-        uses: actions/deploy-pages@v2
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

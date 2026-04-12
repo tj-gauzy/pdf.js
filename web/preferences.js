@@ -22,9 +22,7 @@ import { AppOptions, OptionKind } from "./app_options.js";
  */
 class BasePreferences {
   #defaults = Object.freeze(
-    typeof PDFJSDev === "undefined"
-      ? AppOptions.getAll(OptionKind.PREFERENCE)
-      : PDFJSDev.eval("DEFAULT_PREFERENCES")
+    AppOptions.getAll(OptionKind.PREFERENCE, /* defaultOnly = */ true)
   );
 
   #prefs = Object.create(null);

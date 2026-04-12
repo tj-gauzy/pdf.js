@@ -13,7 +13,22 @@
  * limitations under the License.
  */
 
+/** @typedef {import("./event_utils.js").EventBus} EventBus */
+
 import { AnnotationEditorParamsType } from "pdfjs-lib";
+
+/**
+ * @typedef {Object} AnnotationEditorParamsOptions
+ * @property {HTMLInputElement} editorFreeTextFontSize
+ * @property {HTMLInputElement} editorFreeTextColor
+ * @property {HTMLInputElement} editorInkColor
+ * @property {HTMLInputElement} editorInkThickness
+ * @property {HTMLInputElement} editorInkOpacity
+ * @property {HTMLButtonElement} editorStampAddImage
+ * @property {HTMLInputElement} editorFreeHighlightThickness
+ * @property {HTMLButtonElement} editorHighlightShowAll
+ * @property {HTMLButtonElement} editorSignatureAddSignature
+ */
 
 class AnnotationEditorParams {
   /**
@@ -25,6 +40,9 @@ class AnnotationEditorParams {
     this.#bindListeners(options);
   }
 
+  /**
+   * @param {AnnotationEditorParamsOptions} options
+   */
   #bindListeners({
     editorFreeTextFontSize,
     editorFreeTextColor,
@@ -32,34 +50,57 @@ class AnnotationEditorParams {
     editorInkThickness,
     editorInkOpacity,
     editorStampAddImage,
+    editorFreeHighlightThickness,
+    editorHighlightShowAll,
+    editorSignatureAddSignature,
   }) {
+    const { eventBus } = this;
+
     const dispatchEvent = (typeStr, value) => {
-      this.eventBus.dispatch("switchannotationeditorparams", {
+      eventBus.dispatch("switchannotationeditorparams", {
         source: this,
         type: AnnotationEditorParamsType[typeStr],
         value,
       });
     };
-    editorFreeTextFontSize.addEventListener("input", function () {
+    editorFreeTextFontSize?.addEventListener("input", function () {
       dispatchEvent("FREETEXT_SIZE", this.valueAsNumber);
     });
-    editorFreeTextColor.addEventListener("input", function () {
+    editorFreeTextColor?.addEventListener("input", function () {
       dispatchEvent("FREETEXT_COLOR", this.value);
     });
-    editorInkColor.addEventListener("input", function () {
+    editorInkColor?.addEventListener("input", function () {
       dispatchEvent("INK_COLOR", this.value);
     });
-    editorInkThickness.addEventListener("input", function () {
+    editorInkThickness?.addEventListener("input", function () {
       dispatchEvent("INK_THICKNESS", this.valueAsNumber);
     });
-    editorInkOpacity.addEventListener("input", function () {
+    editorInkOpacity?.addEventListener("input", function () {
       dispatchEvent("INK_OPACITY", this.valueAsNumber);
     });
-    editorStampAddImage.addEventListener("click", () => {
+    editorStampAddImage?.addEventListener("click", () => {
+      eventBus.dispatch("reporttelemetry", {
+        source: this,
+        details: {
+          type: "editing",
+          data: { action: "pdfjs.image.add_image_click" },
+        },
+      });
+      dispatchEvent("CREATE");
+    });
+    editorFreeHighlightThickness?.addEventListener("input", function () {
+      dispatchEvent("HIGHLIGHT_THICKNESS", this.valueAsNumber);
+    });
+    editorHighlightShowAll?.addEventListener("click", function () {
+      const checked = this.getAttribute("aria-pressed") === "true";
+      this.setAttribute("aria-pressed", !checked);
+      dispatchEvent("HIGHLIGHT_SHOW_ALL", !checked);
+    });
+    editorSignatureAddSignature?.addEventListener("click", () => {
       dispatchEvent("CREATE");
     });
 
-    this.eventBus._on("annotationeditorparamschanged", evt => {
+    eventBus._on("annotationeditorparamschanged", evt => {
       for (const [type, value] of evt.details) {
         switch (type) {
           case AnnotationEditorParamsType.FREETEXT_SIZE:
@@ -76,6 +117,25 @@ class AnnotationEditorParams {
             break;
           case AnnotationEditorParamsType.INK_OPACITY:
             editorInkOpacity.value = value;
+            break;
+          case AnnotationEditorParamsType.HIGHLIGHT_COLOR:
+            eventBus.dispatch("mainhighlightcolorpickerupdatecolor", {
+              source: this,
+              value,
+            });
+            break;
+          case AnnotationEditorParamsType.HIGHLIGHT_THICKNESS:
+            if (editorFreeHighlightThickness) {
+              editorFreeHighlightThickness.value = value;
+            }
+            break;
+          case AnnotationEditorParamsType.HIGHLIGHT_FREE:
+            if (editorFreeHighlightThickness) {
+              editorFreeHighlightThickness.disabled = !value;
+            }
+            break;
+          case AnnotationEditorParamsType.HIGHLIGHT_SHOW_ALL:
+            editorHighlightShowAll?.setAttribute("aria-pressed", value);
             break;
         }
       }

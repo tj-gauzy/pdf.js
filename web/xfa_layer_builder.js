@@ -18,17 +18,22 @@
 /** @typedef {import("../src/display/annotation_storage").AnnotationStorage} AnnotationStorage */
 // eslint-disable-next-line max-len
 /** @typedef {import("../src/display/display_utils").PageViewport} PageViewport */
-/** @typedef {import("./interfaces").IPDFLinkService} IPDFLinkService */
+/** @typedef {import("./pdf_link_service.js").PDFLinkService} PDFLinkService */
 
 import { XfaLayer } from "pdfjs-lib";
 
 /**
  * @typedef {Object} XfaLayerBuilderOptions
- * @property {HTMLDivElement} pageDiv
  * @property {PDFPageProxy} pdfPage
  * @property {AnnotationStorage} [annotationStorage]
- * @property {IPDFLinkService} linkService
+ * @property {PDFLinkService} linkService
  * @property {Object} [xfaHtml]
+ */
+
+/**
+ * @typedef {Object} XfaLayerBuilderRenderOptions
+ * @property {PageViewport} viewport
+ * @property {string} [intent] - The default value is "display".
  */
 
 class XfaLayerBuilder {
@@ -36,13 +41,11 @@ class XfaLayerBuilder {
    * @param {XfaLayerBuilderOptions} options
    */
   constructor({
-    pageDiv,
     pdfPage,
     annotationStorage = null,
     linkService,
     xfaHtml = null,
   }) {
-    this.pageDiv = pageDiv;
     this.pdfPage = pdfPage;
     this.annotationStorage = annotationStorage;
     this.linkService = linkService;
@@ -53,13 +56,12 @@ class XfaLayerBuilder {
   }
 
   /**
-   * @param {PageViewport} viewport
-   * @param {string} intent (default value is 'display')
+   * @param {XfaLayerBuilderRenderOptions} viewport
    * @returns {Promise<Object | void>} A promise that is resolved when rendering
    *   of the XFA layer is complete. The first rendering will return an object
    *   with a `textDivs` property that can be used with the TextHighlighter.
    */
-  async render(viewport, intent = "display") {
+  async render({ viewport, intent = "display" }) {
     if (intent === "print") {
       const parameters = {
         viewport: viewport.clone({ dontFlip: true }),
@@ -71,9 +73,8 @@ class XfaLayerBuilder {
       };
 
       // Create an xfa layer div and render the form
-      const div = document.createElement("div");
-      this.pageDiv.append(div);
-      parameters.div = div;
+      this.div = document.createElement("div");
+      parameters.div = this.div;
 
       return XfaLayer.render(parameters);
     }
@@ -98,7 +99,6 @@ class XfaLayerBuilder {
     }
     // Create an xfa layer div and render the form
     this.div = document.createElement("div");
-    this.pageDiv.append(this.div);
     parameters.div = this.div;
 
     return XfaLayer.render(parameters);

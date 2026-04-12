@@ -13,7 +13,14 @@
  * limitations under the License.
  */
 
-import { FormatError, info, unreachable, Util } from "../shared/util.js";
+import { drawMeshWithGPU, isGPUReady, loadMeshShader } from "./webgpu.js";
+import {
+  FormatError,
+  info,
+  MeshFigureType,
+  unreachable,
+  Util,
+} from "../shared/util.js";
 import { getCurrentTransform } from "./display_utils.js";
 
 const PathType = {
@@ -35,9 +42,16 @@ function applyBoundingBox(ctx, bbox) {
 
 class BaseShadingPattern {
   constructor() {
-    if (this.constructor === BaseShadingPattern) {
+    if (
+      (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) &&
+      this.constructor === BaseShadingPattern
+    ) {
       unreachable("Cannot initialize BaseShadingPattern.");
     }
+  }
+
+  isModifyingCurrentTransform() {
+    return false;
   }
 
   getPattern() {
@@ -58,23 +72,66 @@ class RadialAxialShadingPattern extends BaseShadingPattern {
     this.matrix = null;
   }
 
-  _createGradient(ctx) {
+  isOriginBased() {
+    return (
+      this._p0[0] === 0 &&
+      this._p0[1] === 0 &&
+      (!this.isRadial() || (this._p1[0] === 0 && this._p1[1] === 0))
+    );
+  }
+
+  isRadial() {
+    return this._type === "radial";
+  }
+
+  // Return true when the a circle of a radial gradient isn't fully included in
+  // the other circle, which means that the gradient is conic and we need to
+  // draw the reversed gradient first to correctly render the pattern (see
+  // #20851 and #257).
+  areConic() {
+    if (!this.isRadial()) {
+      return false;
+    }
+    const dist = Math.hypot(
+      this._p0[0] - this._p1[0],
+      this._p0[1] - this._p1[1]
+    );
+    return dist + this._r1 > this._r0 && dist + this._r0 > this._r1;
+  }
+
+  _createGradient(ctx, transform = null) {
     let grad;
+    let firstPoint = this._p0;
+    let secondPoint = this._p1;
+    if (transform) {
+      firstPoint = firstPoint.slice();
+      secondPoint = secondPoint.slice();
+      Util.applyTransform(firstPoint, transform);
+      Util.applyTransform(secondPoint, transform);
+    }
     if (this._type === "axial") {
       grad = ctx.createLinearGradient(
-        this._p0[0],
-        this._p0[1],
-        this._p1[0],
-        this._p1[1]
+        firstPoint[0],
+        firstPoint[1],
+        secondPoint[0],
+        secondPoint[1]
       );
     } else if (this._type === "radial") {
+      let r0 = this._r0;
+      let r1 = this._r1;
+      if (transform) {
+        const scale = new Float32Array(2);
+        Util.singularValueDecompose2dScale(transform, scale);
+        r0 *= scale[0];
+        r1 *= scale[0];
+      }
       grad = ctx.createRadialGradient(
-        this._p0[0],
-        this._p0[1],
-        this._r0,
-        this._p1[0],
-        this._p1[1],
-        this._r1
+        firstPoint[0],
+        firstPoint[1],
+        r0,
+        secondPoint[0],
+        secondPoint[1],
+        r1
       );
     }
 
@@ -84,9 +141,70 @@ class RadialAxialShadingPattern extends BaseShadingPattern {
     return grad;
   }
 
+  _createReversedGradient(ctx, transform = null) {
+    // Swapped circles: (p1, r1) → (p0, r0), with color stops reversed.
+    let firstPoint = this._p1;
+    let secondPoint = this._p0;
+    if (transform) {
+      firstPoint = firstPoint.slice();
+      secondPoint = secondPoint.slice();
+      Util.applyTransform(firstPoint, transform);
+      Util.applyTransform(secondPoint, transform);
+    }
+    let r0 = this._r1;
+    let r1 = this._r0;
+    if (transform) {
+      const scale = new Float32Array(2);
+      Util.singularValueDecompose2dScale(transform, scale);
+      r0 *= scale[0];
+      r1 *= scale[0];
+    }
+    const grad = ctx.createRadialGradient(
+      firstPoint[0],
+      firstPoint[1],
+      r0,
+      secondPoint[0],
+      secondPoint[1],
+      r1
+    );
+    const reversedStops = this._colorStops
+      .map(([t, c]) => [1 - t, c])
+      .reverse();
+    for (const [t, c] of reversedStops) {
+      grad.addColorStop(t, c);
+    }
+    return grad;
+  }
+
   getPattern(ctx, owner, inverse, pathType) {
     let pattern;
     if (pathType === PathType.STROKE || pathType === PathType.FILL) {
+      if (this.isOriginBased()) {
+        let transf = Util.transform(inverse, owner.baseTransform);
+        if (this.matrix) {
+          transf = Util.transform(transf, this.matrix);
+        }
+        const precision = 1e-3;
+        const n1 = Math.hypot(transf[0], transf[1]);
+        const n2 = Math.hypot(transf[2], transf[3]);
+        const ps = (transf[0] * transf[2] + transf[1] * transf[3]) / (n1 * n2);
+        if (Math.abs(ps) < precision) {
+          // The images of the basis vectors are orthogonal.
+          if (this.isRadial()) {
+            // If the images of the basis vectors are a square then the
+            // circles are transformed to circles and we can use a gradient
+            // directly.
+            if (Math.abs(n1 - n2) < precision) {
+              return this._createGradient(ctx, transf);
+            }
+          } else {
+            // The rectangles are transformed to rectangles and we can use a
+            // gradient directly.
+            return this._createGradient(ctx, transf);
+          }
+        }
+      }
+
       const ownerBBox = owner.current.getClippedPathBoundingBox(
         pathType,
         getCurrentTransform(ctx)
@@ -97,12 +215,7 @@ class RadialAxialShadingPattern extends BaseShadingPattern {
       const width = Math.ceil(ownerBBox[2] - ownerBBox[0]) || 1;
       const height = Math.ceil(ownerBBox[3] - ownerBBox[1]) || 1;
 
-      const tmpCanvas = owner.cachedCanvases.getCanvas(
-        "pattern",
-        width,
-        height,
-        true
-      );
+      const tmpCanvas = owner.canvasFactory.create(width, height);
 
       const tmpCtx = tmpCanvas.context;
       tmpCtx.clearRect(0, 0, tmpCtx.canvas.width, tmpCtx.canvas.height);
@@ -127,16 +240,30 @@ class RadialAxialShadingPattern extends BaseShadingPattern {
       }
       applyBoundingBox(tmpCtx, this._bbox);
 
+      if (this.areConic()) {
+        tmpCtx.fillStyle = this._createReversedGradient(tmpCtx);
+        tmpCtx.fill();
+      }
       tmpCtx.fillStyle = this._createGradient(tmpCtx);
       tmpCtx.fill();
 
       pattern = ctx.createPattern(tmpCanvas.canvas, "no-repeat");
+      owner.canvasFactory.destroy(tmpCanvas);
       const domMatrix = new DOMMatrix(inverse);
       pattern.setTransform(domMatrix);
     } else {
       // Shading fills are applied relative to the current matrix which is also
       // how canvas gradients work, so there's no need to do anything special
       // here.
+      if (this.areConic()) {
+        // Draw the reversed gradient first so the normal gradient can
+        // correctly overlay it (see _isCircleCenterOutside for details).
+        ctx.save();
+        applyBoundingBox(ctx, this._bbox);
+        ctx.fillStyle = this._createReversedGradient(ctx);
+        ctx.fillRect(-1e10, -1e10, 2e10, 2e10);
+        ctx.restore();
+      }
       applyBoundingBox(ctx, this._bbox);
       pattern = this._createGradient(ctx);
     }
@@ -151,7 +278,7 @@ function drawTriangle(data, context, p1, p2, p3, c1, c2, c3) {
   const bytes = data.data,
     rowSize = data.width * 4;
   let tmp;
-  if (coords[p1 + 1] > coords[p2 + 1]) {
+  if (coords[p1 * 2 + 1] > coords[p2 * 2 + 1]) {
     tmp = p1;
     p1 = p2;
     p2 = tmp;
@@ -159,7 +286,7 @@ function drawTriangle(data, context, p1, p2, p3, c1, c2, c3) {
     c1 = c2;
     c2 = tmp;
   }
-  if (coords[p2 + 1] > coords[p3 + 1]) {
+  if (coords[p2 * 2 + 1] > coords[p3 * 2 + 1]) {
     tmp = p2;
     p2 = p3;
     p3 = tmp;
@@ -167,7 +294,7 @@ function drawTriangle(data, context, p1, p2, p3, c1, c2, c3) {
     c2 = c3;
     c3 = tmp;
   }
-  if (coords[p1 + 1] > coords[p2 + 1]) {
+  if (coords[p1 * 2 + 1] > coords[p2 * 2 + 1]) {
     tmp = p1;
     p1 = p2;
     p2 = tmp;
@@ -175,24 +302,24 @@ function drawTriangle(data, context, p1, p2, p3, c1, c2, c3) {
     c1 = c2;
     c2 = tmp;
   }
-  const x1 = (coords[p1] + context.offsetX) * context.scaleX;
-  const y1 = (coords[p1 + 1] + context.offsetY) * context.scaleY;
-  const x2 = (coords[p2] + context.offsetX) * context.scaleX;
-  const y2 = (coords[p2 + 1] + context.offsetY) * context.scaleY;
-  const x3 = (coords[p3] + context.offsetX) * context.scaleX;
-  const y3 = (coords[p3 + 1] + context.offsetY) * context.scaleY;
+  const x1 = (coords[p1 * 2] + context.offsetX) * context.scaleX;
+  const y1 = (coords[p1 * 2 + 1] + context.offsetY) * context.scaleY;
+  const x2 = (coords[p2 * 2] + context.offsetX) * context.scaleX;
+  const y2 = (coords[p2 * 2 + 1] + context.offsetY) * context.scaleY;
+  const x3 = (coords[p3 * 2] + context.offsetX) * context.scaleX;
+  const y3 = (coords[p3 * 2 + 1] + context.offsetY) * context.scaleY;
   if (y1 >= y3) {
     return;
   }
-  const c1r = colors[c1],
-    c1g = colors[c1 + 1],
-    c1b = colors[c1 + 2];
-  const c2r = colors[c2],
-    c2g = colors[c2 + 1],
-    c2b = colors[c2 + 2];
-  const c3r = colors[c3],
-    c3g = colors[c3 + 1],
-    c3b = colors[c3 + 2];
+  const c1r = colors[c1 * 4],
+    c1g = colors[c1 * 4 + 1],
+    c1b = colors[c1 * 4 + 2];
+  const c2r = colors[c2 * 4],
+    c2g = colors[c2 * 4 + 1],
+    c2b = colors[c2 * 4 + 2];
+  const c3r = colors[c3 * 4],
+    c3g = colors[c3 * 4 + 1],
+    c3b = colors[c3 * 4 + 2];
 
   const minY = Math.round(y1),
     maxY = Math.round(y3);
@@ -255,7 +382,7 @@ function drawFigure(data, figure, context) {
   const cs = figure.colors;
   let i, ii;
   switch (figure.type) {
-    case "lattice":
+    case MeshFigureType.LATTICE:
       const verticesPerRow = figure.verticesPerRow;
       const rows = Math.floor(ps.length / verticesPerRow) - 1;
       const cols = verticesPerRow - 1;
@@ -285,7 +412,7 @@ function drawFigure(data, figure, context) {
         }
       }
       break;
-    case "triangles":
+    case MeshFigureType.TRIANGLES:
       for (i = 0, ii = ps.length; i < ii; i += 3) {
         drawTriangle(
           data,
@@ -311,12 +438,15 @@ class MeshShadingPattern extends BaseShadingPattern {
     this._colors = IR[3];
     this._figures = IR[4];
     this._bounds = IR[5];
-    this._bbox = IR[7];
-    this._background = IR[8];
+    this._bbox = IR[6];
+    this._background = IR[7];
     this.matrix = null;
+    // Pre-compile the mesh pipeline now that we know GPU-renderable content
+    // is present; no-op if the GPU is not available or already compiled.
+    loadMeshShader();
   }
 
-  _createMeshCanvas(combinedScale, backgroundColor, cachedCanvases) {
+  _createMeshCanvas(combinedScale, backgroundColor, canvasFactory) {
     // we will increase scale on some weird factor to let antialiasing take
     // care of "rough" edges
     const EXPECTED_SCALE = 1.1;
@@ -331,16 +461,20 @@ class MeshShadingPattern extends BaseShadingPattern {
     const boundsWidth = Math.ceil(this._bounds[2]) - offsetX;
     const boundsHeight = Math.ceil(this._bounds[3]) - offsetY;
 
-    const width = Math.min(
-      Math.ceil(Math.abs(boundsWidth * combinedScale[0] * EXPECTED_SCALE)),
-      MAX_PATTERN_SIZE
-    );
-    const height = Math.min(
-      Math.ceil(Math.abs(boundsHeight * combinedScale[1] * EXPECTED_SCALE)),
-      MAX_PATTERN_SIZE
-    );
-    const scaleX = boundsWidth / width;
-    const scaleY = boundsHeight / height;
+    // Ensure that the shading has non-zero width and height, to prevent errors
+    // in `pattern_helper.js` (fixes issue17848.pdf).
+    const width =
+      Math.min(
+        Math.ceil(Math.abs(boundsWidth * combinedScale[0] * EXPECTED_SCALE)),
+        MAX_PATTERN_SIZE
+      ) || 1;
+    const height =
+      Math.min(
+        Math.ceil(Math.abs(boundsHeight * combinedScale[1] * EXPECTED_SCALE)),
+        MAX_PATTERN_SIZE
+      ) || 1;
+    const scaleX = boundsWidth ? boundsWidth / width : 1;
+    const scaleY = boundsHeight ? boundsHeight / height : 1;
 
     const context = {
       coords: this._coords,
@@ -353,33 +487,40 @@ class MeshShadingPattern extends BaseShadingPattern {
 
     const paddedWidth = width + BORDER_SIZE * 2;
     const paddedHeight = height + BORDER_SIZE * 2;
+    const tmpCanvas = canvasFactory.create(paddedWidth, paddedHeight);
 
-    const tmpCanvas = cachedCanvases.getCanvas(
-      "mesh",
-      paddedWidth,
-      paddedHeight,
-      false
-    );
-    const tmpCtx = tmpCanvas.context;
-
-    const data = tmpCtx.createImageData(width, height);
-    if (backgroundColor) {
-      const bytes = data.data;
-      for (let i = 0, ii = bytes.length; i < ii; i += 4) {
-        bytes[i] = backgroundColor[0];
-        bytes[i + 1] = backgroundColor[1];
-        bytes[i + 2] = backgroundColor[2];
-        bytes[i + 3] = 255;
+    if (isGPUReady()) {
+      tmpCanvas.context.drawImage(
+        drawMeshWithGPU(
+          this._figures,
+          context,
+          backgroundColor,
+          paddedWidth,
+          paddedHeight,
+          BORDER_SIZE
+        ),
+        0,
+        0
+      );
+    } else {
+      const data = tmpCanvas.context.createImageData(width, height);
+      if (backgroundColor) {
+        const bytes = data.data;
+        for (let i = 0, ii = bytes.length; i < ii; i += 4) {
+          bytes[i] = backgroundColor[0];
+          bytes[i + 1] = backgroundColor[1];
+          bytes[i + 2] = backgroundColor[2];
+          bytes[i + 3] = 255;
+        }
       }
+      for (const figure of this._figures) {
+        drawFigure(data, figure, context);
+      }
+      tmpCanvas.context.putImageData(data, BORDER_SIZE, BORDER_SIZE);
     }
-    for (const figure of this._figures) {
-      drawFigure(data, figure, context);
-    }
-    tmpCtx.putImageData(data, BORDER_SIZE, BORDER_SIZE);
-    const canvas = tmpCanvas.canvas;
 
     return {
-      canvas,
+      canvas: tmpCanvas.canvas,
       offsetX: offsetX - BORDER_SIZE * scaleX,
       offsetY: offsetY - BORDER_SIZE * scaleY,
       scaleX,
@@ -387,18 +528,24 @@ class MeshShadingPattern extends BaseShadingPattern {
     };
   }
 
+  isModifyingCurrentTransform() {
+    return true;
+  }
+
   getPattern(ctx, owner, inverse, pathType) {
     applyBoundingBox(ctx, this._bbox);
-    let scale;
+    const scale = new Float32Array(2);
     if (pathType === PathType.SHADING) {
-      scale = Util.singularValueDecompose2dScale(getCurrentTransform(ctx));
-    } else {
+      Util.singularValueDecompose2dScale(getCurrentTransform(ctx), scale);
+    } else if (this.matrix) {
       // Obtain scale from matrix and current transformation matrix.
-      scale = Util.singularValueDecompose2dScale(owner.baseTransform);
-      if (this.matrix) {
-        const matrixScale = Util.singularValueDecompose2dScale(this.matrix);
-        scale = [scale[0] * matrixScale[0], scale[1] * matrixScale[1]];
-      }
+      Util.singularValueDecompose2dScale(this.matrix, scale);
+      const [matrixScaleX, matrixScaleY] = scale;
+      Util.singularValueDecompose2dScale(owner.baseTransform, scale);
+      scale[0] *= matrixScaleX;
+      scale[1] *= matrixScaleY;
+    } else {
+      Util.singularValueDecompose2dScale(owner.baseTransform, scale);
     }
 
     // Rasterizing on the main thread since sending/queue large canvases
@@ -406,7 +553,7 @@ class MeshShadingPattern extends BaseShadingPattern {
     const temporaryPatternCanvas = this._createMeshCanvas(
       scale,
       pathType === PathType.SHADING ? null : this._background,
-      owner.cachedCanvases
+      owner.canvasFactory
     );
 
     if (pathType !== PathType.SHADING) {
@@ -422,7 +569,12 @@ class MeshShadingPattern extends BaseShadingPattern {
     );
     ctx.scale(temporaryPatternCanvas.scaleX, temporaryPatternCanvas.scaleY);
 
-    return ctx.createPattern(temporaryPatternCanvas.canvas, "no-repeat");
+    const pattern = ctx.createPattern(
+      temporaryPatternCanvas.canvas,
+      "no-repeat"
+    );
+    owner.canvasFactory.destroy(temporaryPatternCanvas);
+    return pattern;
   }
 }
 
@@ -453,31 +605,160 @@ class TilingPattern {
   // 10in @ 300dpi shall be enough.
   static MAX_PATTERN_SIZE = 3000;
 
-  constructor(IR, color, ctx, canvasGraphicsFactory, baseTransform) {
+  constructor(IR, ctx, canvasGraphicsFactory, baseTransform) {
+    this.color = IR[1];
     this.operatorList = IR[2];
-    this.matrix = IR[3] || [1, 0, 0, 1, 0, 0];
+    this.matrix = IR[3];
     this.bbox = IR[4];
     this.xstep = IR[5];
     this.ystep = IR[6];
     this.paintType = IR[7];
     this.tilingType = IR[8];
-    this.color = color;
+    this.needsIsolation = IR[9] ?? true;
     this.ctx = ctx;
     this.canvasGraphicsFactory = canvasGraphicsFactory;
     this.baseTransform = baseTransform;
+    // baseTransform * patternMatrix.
+    this.patternBaseMatrix = this.matrix
+      ? Util.transform(baseTransform, this.matrix)
+      : baseTransform;
   }
 
-  createPatternCanvas(owner) {
-    const operatorList = this.operatorList;
-    const bbox = this.bbox;
-    const xstep = this.xstep;
-    const ystep = this.ystep;
-    const paintType = this.paintType;
-    const tilingType = this.tilingType;
-    const color = this.color;
-    const canvasGraphicsFactory = this.canvasGraphicsFactory;
+  // Returns [n, m] tile index if the fill area fits within one tile,
+  // null otherwise.
+  canSkipPatternCanvas([width, height, offsetX, offsetY]) {
+    const [x0, y0, x1, y1] = this.bbox;
+    const absXStep = Math.abs(this.xstep);
+    const absYStep = Math.abs(this.ystep);
 
-    info("TilingType: " + tilingType);
+    // dims is in pattern space, so compare directly with xstep/ystep.
+    if (width > absXStep + 1e-6 || height > absYStep + 1e-6) {
+      return null;
+    }
+
+    // Tile n covers [x0+n·xstep, x1+n·xstep]; find the range intersecting
+    // [offsetX, offsetX+width].
+    const nXFirst = Math.floor((offsetX - x1) / absXStep) + 1;
+    const nXLast = Math.ceil((offsetX + width - x0) / absXStep) - 1;
+    const nYFirst = Math.floor((offsetY - y1) / absYStep) + 1;
+    const nYLast = Math.ceil((offsetY + height - y0) / absYStep) - 1;
+    return nXLast <= nXFirst && nYLast <= nYFirst ? [nXFirst, nYFirst] : null;
+  }
+
+  // Converts clippedBBox from device space to pattern space and stores it
+  // as [width, height, offsetX, offsetY] in dims.
+  updatePatternDims(clippedBBox, dims) {
+    const inv = Util.inverseTransform(this.patternBaseMatrix);
+    const c1 = [clippedBBox[0], clippedBBox[1]];
+    const c2 = [clippedBBox[2], clippedBBox[3]];
+    Util.applyTransform(c1, inv);
+    Util.applyTransform(c2, inv);
+    dims[0] = Math.abs(c2[0] - c1[0]);
+    dims[1] = Math.abs(c2[1] - c1[1]);
+    dims[2] = Math.min(c1[0], c2[0]);
+    dims[3] = Math.min(c1[1], c2[1]);
+  }
+
+  // Renders the tile operators onto a fresh canvas and returns it.
+  _renderTileCanvas(owner, opIdx, dimx, dimy) {
+    const [x0, y0, x1, y1] = this.bbox;
+    const tmpCanvas = owner.canvasFactory.create(dimx.size, dimy.size);
+    const tmpCtx = tmpCanvas.context;
+    const graphics = this.canvasGraphicsFactory.createCanvasGraphics(
+      tmpCtx,
+      opIdx
+    );
+    graphics.groupLevel = owner.groupLevel;
+
+    this.setFillAndStrokeStyleToContext(graphics, this.paintType, this.color);
+
+    tmpCtx.translate(-dimx.scale * x0, -dimy.scale * y0);
+    // 0: sub-ops are indexed under the top-level opIdx from
+    // createCanvasGraphics.
+    graphics.transform(0, dimx.scale, 0, 0, dimy.scale, 0, 0);
+
+    // Required to balance the save/restore in CanvasGraphics beginDrawing.
+    tmpCtx.save();
+    graphics.dependencyTracker?.save();
+
+    this.clipBbox(graphics, x0, y0, x1, y1);
+    graphics.baseTransform = getCurrentTransform(graphics.ctx);
+    graphics.executeOperatorList(this.operatorList);
+
+    graphics.endDrawing();
+    graphics.dependencyTracker?.restore();
+    tmpCtx.restore();
+
+    return tmpCanvas;
+  }
+
+  _getCombinedScales() {
+    const scale = new Float32Array(2);
+    Util.singularValueDecompose2dScale(this.matrix, scale);
+    const [matrixScaleX, matrixScaleY] = scale;
+    Util.singularValueDecompose2dScale(this.baseTransform, scale);
+    return [matrixScaleX * scale[0], matrixScaleY * scale[1]];
+  }
+
+  // Draws a single tile directly onto owner, clipped to path.
+  drawPattern(owner, path, useEOFill = false, [n, m], opIdx) {
+    const [x0, y0, x1, y1] = this.bbox;
+
+    owner.save();
+    if (useEOFill) {
+      owner.ctx.clip(path, "evenodd");
+    } else {
+      owner.ctx.clip(path);
+    }
+    // Position tile (n, m) in device space; the clip above is unaffected
+    // by setTransform.
+    owner.ctx.setTransform(...this.patternBaseMatrix);
+    owner.ctx.translate(n * this.xstep, m * this.ystep);
+    if (
+      this.needsIsolation ||
+      owner.ctx.globalAlpha !== 1 ||
+      owner.ctx.globalCompositeOperation !== "source-over" ||
+      owner.inSMaskMode
+    ) {
+      const bboxWidth = x1 - x0;
+      const bboxHeight = y1 - y0;
+      const [combinedScaleX, combinedScaleY] = this._getCombinedScales();
+      const dimx = this.getSizeAndScale(
+        bboxWidth,
+        this.ctx.canvas.width,
+        combinedScaleX
+      );
+      const dimy = this.getSizeAndScale(
+        bboxHeight,
+        this.ctx.canvas.height,
+        combinedScaleY
+      );
+      // Isolate blend modes from the main canvas.
+      const tmpCanvas = this._renderTileCanvas(owner, opIdx, dimx, dimy);
+      owner.ctx.drawImage(tmpCanvas.canvas, x0, y0, bboxWidth, bboxHeight);
+      owner.canvasFactory.destroy(tmpCanvas);
+    } else {
+      // No blend modes or transparency: render the tile directly onto owner.
+      this.setFillAndStrokeStyleToContext(owner, this.paintType, this.color);
+      this.clipBbox(owner, x0, y0, x1, y1);
+      owner.baseTransformStack.push(owner.baseTransform);
+      owner.baseTransform = getCurrentTransform(owner.ctx);
+      owner.executeOperatorList(this.operatorList);
+      owner.baseTransform = owner.baseTransformStack.pop();
+    }
+
+    owner.restore();
+  }
+
+  createPatternCanvas(owner, opIdx) {
+    const [x0, y0, x1, y1] = this.bbox;
+    const width = x1 - x0;
+    const height = y1 - y0;
+    let { xstep, ystep } = this;
+    xstep = Math.abs(xstep);
+    ystep = Math.abs(ystep);
+
+    info("TilingType: " + this.tilingType);
 
     // A tiling pattern as defined by PDF spec 8.7.2 is a cell whose size is
     // described by bbox, and may repeat regularly by shifting the cell by
@@ -496,92 +777,118 @@ class TilingPattern {
     //   bbox boundary will be missing. This is INCORRECT behavior.
     //   "Figures on adjacent tiles should not overlap" (PDF spec 8.7.3.1),
     //   but overlapping cells without common pixels are still valid.
-    //   TODO: Fix the implementation, to allow this scenario to be painted
-    //   correctly.
-
-    const x0 = bbox[0],
-      y0 = bbox[1],
-      x1 = bbox[2],
-      y1 = bbox[3];
 
     // Obtain scale from matrix and current transformation matrix.
-    const matrixScale = Util.singularValueDecompose2dScale(this.matrix);
-    const curMatrixScale = Util.singularValueDecompose2dScale(
-      this.baseTransform
-    );
-    const combinedScale = [
-      matrixScale[0] * curMatrixScale[0],
-      matrixScale[1] * curMatrixScale[1],
-    ];
+    const [combinedScaleX, combinedScaleY] = this._getCombinedScales();
 
     // Use width and height values that are as close as possible to the end
     // result when the pattern is used. Too low value makes the pattern look
     // blurry. Too large value makes it look too crispy.
+    let canvasWidth = width,
+      canvasHeight = height,
+      redrawHorizontally = false,
+      redrawVertically = false;
+
+    if (
+      Math.ceil(xstep * combinedScaleX) >= Math.ceil(width * combinedScaleX)
+    ) {
+      canvasWidth = xstep;
+    } else {
+      redrawHorizontally = true;
+    }
+    if (
+      Math.ceil(ystep * combinedScaleY) >= Math.ceil(height * combinedScaleY)
+    ) {
+      canvasHeight = ystep;
+    } else {
+      redrawVertically = true;
+    }
+
     const dimx = this.getSizeAndScale(
-      xstep,
+      canvasWidth,
       this.ctx.canvas.width,
-      combinedScale[0]
+      combinedScaleX
     );
     const dimy = this.getSizeAndScale(
-      ystep,
+      canvasHeight,
       this.ctx.canvas.height,
-      combinedScale[1]
+      combinedScaleY
     );
 
-    const tmpCanvas = owner.cachedCanvases.getCanvas(
-      "pattern",
-      dimx.size,
-      dimy.size,
-      true
-    );
-    const tmpCtx = tmpCanvas.context;
-    const graphics = canvasGraphicsFactory.createCanvasGraphics(tmpCtx);
-    graphics.groupLevel = owner.groupLevel;
+    const tmpCanvas = this._renderTileCanvas(owner, opIdx, dimx, dimy);
 
-    this.setFillAndStrokeStyleToContext(graphics, paintType, color);
+    if (redrawHorizontally || redrawVertically) {
+      // The tile is overlapping itself, so we create a new tile with
+      // dimensions xstep * ystep.
+      // Then we draw the overlapping parts of the original tile on the new
+      // tile.
+      // Just as a side note, the code here works correctly even if we don't
+      // have to redraw the tile horizontally or vertically. In that case, the
+      // original tile is drawn on the new tile only once, but it's useless.
+      const image = tmpCanvas.canvas;
+      if (redrawHorizontally) {
+        canvasWidth = xstep;
+      }
+      if (redrawVertically) {
+        canvasHeight = ystep;
+      }
 
-    let adjustedX0 = x0;
-    let adjustedY0 = y0;
-    let adjustedX1 = x1;
-    let adjustedY1 = y1;
-    // Some bounding boxes have negative x0/y0 coordinates which will cause the
-    // some of the drawing to be off of the canvas. To avoid this shift the
-    // bounding box over.
-    if (x0 < 0) {
-      adjustedX0 = 0;
-      adjustedX1 += Math.abs(x0);
+      const dimx2 = this.getSizeAndScale(
+        canvasWidth,
+        this.ctx.canvas.width,
+        combinedScaleX
+      );
+      const dimy2 = this.getSizeAndScale(
+        canvasHeight,
+        this.ctx.canvas.height,
+        combinedScaleY
+      );
+
+      const xSize = dimx2.size;
+      const ySize = dimy2.size;
+      const tmpCanvas2 = owner.canvasFactory.create(xSize, ySize);
+      const tmpCtx2 = tmpCanvas2.context;
+      const ii = redrawHorizontally ? Math.floor(width / xstep) : 0;
+      const jj = redrawVertically ? Math.floor(height / ystep) : 0;
+
+      // Draw the overlapping parts of the original tile on the new tile.
+      for (let i = 0; i <= ii; i++) {
+        for (let j = 0; j <= jj; j++) {
+          tmpCtx2.drawImage(
+            image,
+            xSize * i,
+            ySize * j,
+            xSize,
+            ySize,
+            0,
+            0,
+            xSize,
+            ySize
+          );
+        }
+      }
+      owner.canvasFactory.destroy(tmpCanvas);
+      return {
+        canvas: tmpCanvas2.canvas,
+        canvasEntry: tmpCanvas2,
+        scaleX: dimx2.scale,
+        scaleY: dimy2.scale,
+        offsetX: x0,
+        offsetY: y0,
+      };
     }
-    if (y0 < 0) {
-      adjustedY0 = 0;
-      adjustedY1 += Math.abs(y0);
-    }
-    tmpCtx.translate(-(dimx.scale * adjustedX0), -(dimy.scale * adjustedY0));
-    graphics.transform(dimx.scale, 0, 0, dimy.scale, 0, 0);
-
-    // To match CanvasGraphics beginDrawing we must save the context here or
-    // else we end up with unbalanced save/restores.
-    tmpCtx.save();
-
-    this.clipBbox(graphics, adjustedX0, adjustedY0, adjustedX1, adjustedY1);
-
-    graphics.baseTransform = getCurrentTransform(graphics.ctx);
-
-    graphics.executeOperatorList(operatorList);
-
-    graphics.endDrawing();
 
     return {
       canvas: tmpCanvas.canvas,
+      canvasEntry: tmpCanvas,
       scaleX: dimx.scale,
       scaleY: dimy.scale,
-      offsetX: adjustedX0,
-      offsetY: adjustedY0,
+      offsetX: x0,
+      offsetY: y0,
     };
   }
 
   getSizeAndScale(step, realOutputSize, scale) {
-    // xstep / ystep may be negative -- normalize.
-    step = Math.abs(step);
     // MAX_PATTERN_SIZE is used to avoid OOM situation.
     // Use the destination canvas's size if it is bigger than the hard-coded
     // limit of MAX_PATTERN_SIZE to avoid clipping patterns that cover the
@@ -599,15 +906,15 @@ class TilingPattern {
   clipBbox(graphics, x0, y0, x1, y1) {
     const bboxWidth = x1 - x0;
     const bboxHeight = y1 - y0;
-    graphics.ctx.rect(x0, y0, bboxWidth, bboxHeight);
-    graphics.current.updateRectMinMax(getCurrentTransform(graphics.ctx), [
-      x0,
-      y0,
-      x1,
-      y1,
-    ]);
-    graphics.clip();
-    graphics.endPath();
+    const clip = new Path2D();
+    clip.rect(x0, y0, bboxWidth, bboxHeight);
+    Util.axialAlignedBoundingBox(
+      [x0, y0, x1, y1],
+      getCurrentTransform(graphics.ctx),
+      graphics.current.minMax
+    );
+    graphics.ctx.clip(clip);
+    graphics.current.updateClipFromPath();
   }
 
   setFillAndStrokeStyleToContext(graphics, paintType, color) {
@@ -615,36 +922,33 @@ class TilingPattern {
       current = graphics.current;
     switch (paintType) {
       case PaintType.COLORED:
-        const ctx = this.ctx;
-        context.fillStyle = ctx.fillStyle;
-        context.strokeStyle = ctx.strokeStyle;
-        current.fillColor = ctx.fillStyle;
-        current.strokeColor = ctx.strokeStyle;
+        const { fillStyle, strokeStyle } = this.ctx;
+        context.fillStyle = current.fillColor = fillStyle;
+        context.strokeStyle = current.strokeColor = strokeStyle;
         break;
       case PaintType.UNCOLORED:
-        const cssColor = Util.makeHexColor(color[0], color[1], color[2]);
-        context.fillStyle = cssColor;
-        context.strokeStyle = cssColor;
+        context.fillStyle = context.strokeStyle = color;
         // Set color needed by image masks (fixes issues 3226 and 8741).
-        current.fillColor = cssColor;
-        current.strokeColor = cssColor;
+        current.fillColor = current.strokeColor = color;
         break;
       default:
         throw new FormatError(`Unsupported paint type: ${paintType}`);
     }
   }
 
-  getPattern(ctx, owner, inverse, pathType) {
-    // PDF spec 8.7.2 NOTE 1: pattern's matrix is relative to initial matrix.
-    let matrix = inverse;
-    if (pathType !== PathType.SHADING) {
-      matrix = Util.transform(matrix, owner.baseTransform);
-      if (this.matrix) {
-        matrix = Util.transform(matrix, this.matrix);
-      }
-    }
+  isModifyingCurrentTransform() {
+    return false;
+  }
 
-    const temporaryPatternCanvas = this.createPatternCanvas(owner);
+  getPattern(ctx, owner, inverse, pathType, opIdx) {
+    // PDF spec 8.7.2: prepend inverse CTM to patternBaseMatrix to position
+    // the CSS pattern.
+    const matrix =
+      pathType !== PathType.SHADING
+        ? Util.transform(inverse, this.patternBaseMatrix)
+        : inverse;
+
+    const temporaryPatternCanvas = this.createPatternCanvas(owner, opIdx);
 
     let domMatrix = new DOMMatrix(matrix);
     // Rescale and so that the ctx.createPattern call generates a pattern with
@@ -659,6 +963,7 @@ class TilingPattern {
     );
 
     const pattern = ctx.createPattern(temporaryPatternCanvas.canvas, "repeat");
+    owner.canvasFactory.destroy(temporaryPatternCanvas.canvasEntry);
     pattern.setTransform(domMatrix);
 
     return pattern;

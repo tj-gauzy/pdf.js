@@ -13,6 +13,7 @@
  * limitations under the License.
  */
 
+import { MathClamp } from "../../shared/math_clamp.js";
 import { shadow } from "../../shared/util.js";
 
 const dimConverters = {
@@ -106,9 +107,8 @@ function getRatio(data) {
     return { num: 1, den: 1 };
   }
   const ratio = data
-    .trim()
-    .split(/\s*:\s*/)
-    .map(x => parseFloat(x))
+    .split(":", 2)
+    .map(x => parseFloat(x.trim()))
     .filter(x => !isNaN(x));
   if (ratio.length === 1) {
     ratio.push(1);
@@ -129,12 +129,10 @@ function getRelevant(data) {
   return data
     .trim()
     .split(/\s+/)
-    .map(e => {
-      return {
-        excluded: e[0] === "-",
-        viewname: e.substring(1),
-      };
-    });
+    .map(e => ({
+      excluded: e[0] === "-",
+      viewname: e.substring(1),
+    }));
 }
 
 function getColor(data, def = [0, 0, 0]) {
@@ -143,9 +141,8 @@ function getColor(data, def = [0, 0, 0]) {
     return { r, g, b };
   }
   const color = data
-    .trim()
-    .split(/\s*,\s*/)
-    .map(c => Math.min(Math.max(0, parseInt(c.trim(), 10)), 255))
+    .split(",", 3)
+    .map(c => MathClamp(parseInt(c.trim(), 10), 0, 255))
     .map(c => (isNaN(c) ? 0 : c));
 
   if (color.length < 3) {
@@ -161,10 +158,8 @@ function getBBox(data) {
   if (!data) {
     return { x: def, y: def, width: def, height: def };
   }
-  const bbox = data
-    .trim()
-    .split(/\s*,\s*/)
-    .map(m => getMeasurement(m, "-1"));
+  const bbox = data.split(",", 4).map(m => getMeasurement(m.trim(), "-1"));
+
   if (bbox.length < 4 || bbox[2] < 0 || bbox[3] < 0) {
     return { x: def, y: def, width: def, height: def };
   }

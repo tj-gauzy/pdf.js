@@ -17,6 +17,24 @@ import { getXfaPageViewport, PixelsPerInch } from "pdfjs-lib";
 import { SimpleLinkService } from "./pdf_link_service.js";
 import { XfaLayerBuilder } from "./xfa_layer_builder.js";
 
+class BasePrintServiceFactory {
+  constructor() {
+    if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
+      throw new Error("Cannot initialize BasePrintServiceFactory.");
+    }
+  }
+
+  static initGlobals(app) {}
+
+  static get supportsPrinting() {
+    throw new Error("Not implemented: supportsPrinting");
+  }
+
+  static createPrintService(params) {
+    throw new Error("Not implemented: createPrintService");
+  }
+}
+
 function getXfaHtmlForPrinting(printContainer, pdfDocument) {
   const xfaHtml = pdfDocument.allXfaHtml;
   const linkService = new SimpleLinkService();
@@ -28,7 +46,6 @@ function getXfaHtmlForPrinting(printContainer, pdfDocument) {
     printContainer.append(page);
 
     const builder = new XfaLayerBuilder({
-      pageDiv: page,
       pdfPage: null,
       annotationStorage: pdfDocument.annotationStorage,
       linkService,
@@ -36,8 +53,9 @@ function getXfaHtmlForPrinting(printContainer, pdfDocument) {
     });
     const viewport = getXfaPageViewport(xfaPage, { scale });
 
-    builder.render(viewport, "print");
+    builder.render({ viewport, intent: "print" });
+    page.append(builder.div);
   }
 }
 
-export { getXfaHtmlForPrinting };
+export { BasePrintServiceFactory, getXfaHtmlForPrinting };
