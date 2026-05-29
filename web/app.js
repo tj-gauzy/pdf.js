@@ -477,6 +477,9 @@ let PDFViewerApplication = {
 
     const pdfRenderingQueue = new PDFRenderingQueue();
     pdfRenderingQueue.onIdle = this._cleanup.bind(this);
+    pdfRenderingQueue.setScrollThrottleDelay(
+      AppOptions.get("renderQueueScrollThrottle") | 0
+    );
     this.pdfRenderingQueue = pdfRenderingQueue;
 
     const pdfLinkService = new PDFLinkService({

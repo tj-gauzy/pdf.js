@@ -4,11 +4,27 @@ import {
   OptionKind,
 } from "./app_options.js";
 
+// Per-instance default overrides for standalone — applied below the shared
+// `defaultOptions` but above `compatibilityParams`, and still overridable
+// by anything the embedder passes through `setAll()`.
+const standaloneDefaultOverrides = {
+  // iOS WebView crashes under rapid scroll when many page canvases are
+  // allocated back-to-back; throttle scroll-triggered render dispatches.
+  renderQueueScrollThrottle: 150,
+};
+
 /**
  * Standalone version of AppOptions.
  */
 class AppOption {
   userOptions = Object.create(null);
+
+  _resolveDefault(name, defaultOption) {
+    if (standaloneDefaultOverrides[name] !== undefined) {
+      return standaloneDefaultOverrides[name];
+    }
+    return compatibilityParams[name] ?? defaultOption.value;
+  }
 
   get(name) {
     const userOption = this.userOptions[name];
@@ -17,7 +33,7 @@ class AppOption {
     }
     const defaultOption = defaultOptions[name];
     if (defaultOption !== undefined) {
-      return compatibilityParams[name] ?? defaultOption.value;
+      return this._resolveDefault(name, defaultOption);
     }
     return undefined;
   }
@@ -48,7 +64,7 @@ class AppOption {
       options[name] =
         userOption !== undefined
           ? userOption
-          : compatibilityParams[name] ?? defaultOption.value;
+          : this._resolveDefault(name, defaultOption);
     }
     return options;
   }

@@ -1168,7 +1168,7 @@ class PDFViewer {
     if (this.pagesCount === 0) {
       return;
     }
-    this.update();
+    this.update({ source: "scroll" });
   }
 
   #scrollIntoView(pageView, pageSpot = null) {
@@ -1590,7 +1590,7 @@ class PDFViewer {
     };
   }
 
-  update() {
+  update({ source } = {}) {
     const visible = this._getVisiblePages();
     const visiblePages = visible.views,
       numVisiblePages = visiblePages.length;
@@ -1601,7 +1601,7 @@ class PDFViewer {
     const newCacheSize = Math.max(DEFAULT_CACHE_SIZE, 2 * numVisiblePages + 1);
     this.#buffer.resize(newCacheSize, visible.ids);
 
-    this.renderingQueue.renderHighestPriority(visible);
+    this.renderingQueue.renderHighestPriority(visible, { source });
 
     const isSimpleLayout =
       this._spreadMode === SpreadMode.NONE &&

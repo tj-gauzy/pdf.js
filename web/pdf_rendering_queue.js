@@ -37,10 +37,26 @@ class PDFRenderingQueue {
     this.printing = false;
     this.isThumbnailViewEnabled = false;
 
+    this.scrollThrottleDelay = 0;
+    this._pendingDispatchTimeout = null;
+
     if (typeof PDFJSDev === "undefined" || PDFJSDev.test("GENERIC")) {
       Object.defineProperty(this, "hasViewer", {
         value: () => !!this.pdfViewer,
       });
+    }
+  }
+
+  /**
+   * Configure the trailing-edge throttle for scroll-triggered render
+   * dispatches. Set to 0 to disable (default).
+   * @param {number} ms
+   */
+  setScrollThrottleDelay(ms) {
+    this.scrollThrottleDelay = ms > 0 ? ms : 0;
+    if (this.scrollThrottleDelay === 0 && this._pendingDispatchTimeout) {
+      clearTimeout(this._pendingDispatchTimeout);
+      this._pendingDispatchTimeout = null;
     }
   }
 
@@ -68,8 +84,34 @@ class PDFRenderingQueue {
 
   /**
    * @param {Object} currentlyVisiblePages
+   * @param {Object} [opts]
+   * @param {string} [opts.source] - When "scroll", dispatch is throttled
+   *   (leading + trailing) by `scrollThrottleDelay` so that rapid scrolling
+   *   does not allocate a flood of page canvases.
    */
-  renderHighestPriority(currentlyVisiblePages) {
+  renderHighestPriority(currentlyVisiblePages, opts = {}) {
+    if (this.scrollThrottleDelay > 0 && opts.source === "scroll") {
+      if (this._pendingDispatchTimeout !== null) {
+        // Already inside an active throttle window — just bump the trailing
+        // timer so it only fires after scrolling has been quiet for at least
+        // `scrollThrottleDelay` ms. Return without dispatching: during
+        // sustained fast scroll the only dispatches are the leading one
+        // (when the window opened) and the trailing one (when scroll stops).
+        clearTimeout(this._pendingDispatchTimeout);
+        this._pendingDispatchTimeout = setTimeout(() => {
+          this._pendingDispatchTimeout = null;
+          this.renderHighestPriority();
+        }, this.scrollThrottleDelay);
+        return;
+      }
+      // Window is cold: open it (trailing timer) and fall through to do the
+      // immediate leading dispatch.
+      this._pendingDispatchTimeout = setTimeout(() => {
+        this._pendingDispatchTimeout = null;
+        this.renderHighestPriority();
+      }, this.scrollThrottleDelay);
+    }
+
     if (this.idleTimeout) {
       clearTimeout(this.idleTimeout);
       this.idleTimeout = null;

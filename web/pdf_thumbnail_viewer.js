@@ -76,7 +76,7 @@ class PDFThumbnailViewer {
    * @private
    */
   _scrollUpdated() {
-    this.renderingQueue.renderHighestPriority();
+    this.renderingQueue.renderHighestPriority(undefined, { source: "scroll" });
   }
 
   getThumbnail(index) {

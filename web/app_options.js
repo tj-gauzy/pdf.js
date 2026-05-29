@@ -169,6 +169,11 @@ const defaultOptions = {
     value: 150,
     kind: OptionKind.VIEWER,
   },
+  renderQueueScrollThrottle: {
+    /** @type {number} */
+    value: 0,
+    kind: OptionKind.VIEWER,
+  },
   sidebarViewOnLoad: {
     /** @type {number} */
     value: -1,
