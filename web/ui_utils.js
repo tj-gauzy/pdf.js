@@ -165,7 +165,11 @@ function scrollIntoView(element, spot, scrollMatches = false) {
  * Helper function to start monitoring the scroll event and converting them into
  * PDF.js friendly one: with scroll debounce and scroll direction.
  */
-function watchScroll(viewAreaElement, callback) {
+function watchScroll(viewAreaElement, callback, options = {}) {
+  let frameCount = 0;
+  let fastScrollDelayUpdater = null;
+  const { throttleFrames = 15, fastSpeed = 60 } = options;
+
   const debounceScroll = function (evt) {
     if (rAF) {
       return;
@@ -186,6 +190,37 @@ function watchScroll(viewAreaElement, callback) {
         state.down = currentY > lastY;
       }
       state.lastY = currentY;
+
+      // 1) Only run the callback on normal scroll speed
+      if (typeof fastSpeed === "number" && fastSpeed > 0) {
+        const speed = Math.max(
+          Math.abs(currentX - lastX),
+          Math.abs(currentY - lastY)
+        );
+        if (speed > fastSpeed) {
+          if (fastScrollDelayUpdater) {
+            clearTimeout(fastScrollDelayUpdater);
+          }
+          fastScrollDelayUpdater = setTimeout(() => {
+            viewAreaElementScrolled();
+          }, 200);
+          frameCount = 0; // reset on next normal speed scroll
+          return;
+        }
+      }
+
+      // 2) Only run the callback once per `throttleFrames` frames
+      if (typeof throttleFrames === "number" && throttleFrames > 0) {
+        if (frameCount > throttleFrames) {
+          frameCount = 0;
+        }
+
+        frameCount++;
+        if (frameCount !== 1) {
+          return;
+        }
+      }
+
       callback(state);
     });
   };
