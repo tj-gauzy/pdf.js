@@ -178,6 +178,7 @@ class XRef {
 
     // The pdflib PDF generator can generate a nested trailer dictionary
     if (!(dict instanceof Dict) && dict.dict) {
+      this.hasXRefTableRepairs = true;
       dict = dict.dict;
     }
     if (!(dict instanceof Dict)) {
@@ -263,11 +264,14 @@ class XRef {
         // The first xref table entry, i.e. obj 0, should be free. Attempting
         // to adjust an incorrect first obj # (fixes issue 3248 and 7229).
         if (i === 0 && entry.free && first === 1) {
+          this.hasXRefTableRepairs = true;
           first = 0;
         }
 
         if (!this.entries[i + first]) {
           this.entries[i + first] = entry;
+        } else {
+          this.hasXRefTableRepairs = true;
         }
       }
 
@@ -830,7 +834,7 @@ class XRef {
     return xrefEntry;
   }
 
-  fetchUncompressed(ref, xrefEntry, suppressEncryption = false) {
+  fetchUncompressed(ref, xrefEntry, suppressEncryption = false, cache = true) {
     const gen = ref.gen;
     let num = ref.num;
     if (xrefEntry.gen !== gen) {
@@ -875,7 +879,7 @@ class XRef {
       this.encrypt && !suppressEncryption
         ? parser.getObj(this.encrypt.createCipherTransform(num, gen))
         : parser.getObj();
-    if (!(xrefEntry instanceof BaseStream)) {
+    if (cache && !(xrefEntry instanceof BaseStream)) {
       if (typeof PDFJSDev === "undefined" || PDFJSDev.test("TESTING")) {
         assert(
           xrefEntry !== undefined,

@@ -39,6 +39,7 @@ import { Dict, Ref } from "./primitives.js";
 import { LocalPdfManager, NetworkPdfManager } from "./pdf_manager.js";
 import { AnnotationFactory } from "./annotation.js";
 import { clearGlobalCaches } from "./cleanup_helper.js";
+import { getIncrementalSource } from "./incremental_source.js";
 import { incrementalUpdate } from "./writer.js";
 import { MessageHandler } from "../shared/message_handler.js";
 import { PDFWorkerStream } from "./worker_stream.js";
@@ -96,6 +97,7 @@ class WorkerMessageHandler {
     // This context is actually holds references on pdfManager and handler,
     // until the latter is destroyed.
     let pdfManager;
+    let incrementalSourceLoadState;
     let terminated = false;
     let cancelXHRs = null;
     const WorkerTasks = new Set();
@@ -187,7 +189,11 @@ class WorkerMessageHandler {
         ? await pdfManager.ensureDoc("htmlForXfa")
         : null;
 
-      return { numPages, fingerprints, htmlForXfa };
+      incrementalSourceLoadState = {
+        recovered: recoveryMode,
+        pureXfa: !!isPureXfa,
+      };
+      return { numPages, fingerprints, htmlForXfa, incrementalSourceVersion: 2 };
     }
 
     function getPdfManager({
@@ -501,6 +507,19 @@ class WorkerMessageHandler {
       return pdfManager.requestLoadedStream().then(function (stream) {
         return stream.bytes;
       });
+    });
+
+    handler.on("GetIncrementalSource", function ({ action, payload }) {
+      ensureNotTerminated();
+      if (!incrementalSourceLoadState) {
+        return { error: "NOT_READY" };
+      }
+      return getIncrementalSource(
+        pdfManager,
+        incrementalSourceLoadState,
+        action,
+        payload
+      );
     });
 
     handler.on("GetAnnotations", function ({ pageIndex, intent }) {

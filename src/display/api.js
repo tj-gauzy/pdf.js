@@ -1014,6 +1014,17 @@ class PDFDocumentProxy {
     return this._transport.getData();
   }
 
+  get incrementalSourceVersion() {
+    return this._pdfInfo.incrementalSourceVersion;
+  }
+
+  getIncrementalSource(action, payload) {
+    return this._transport.messageHandler.sendWithPromise("GetIncrementalSource", {
+      action,
+      payload,
+    });
+  }
+
   /**
    * @returns {Promise<Uint8Array>} A promise that is resolved with a
    *   {Uint8Array} containing the full data of the saved document.
