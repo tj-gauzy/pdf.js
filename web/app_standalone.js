@@ -1,4 +1,5 @@
 import {
+  APP,
   DefaultExternalServices,
   PDFViewerApplication,
   setActiveAppInstance,
@@ -28,6 +29,7 @@ function App(config) {
   } = config || {};
 
   this._initializedCapability = new PromiseCapability();
+  this._boundEvents = Object.create(null);
   this.appConfig = appConfig || genAppConfig(document);
   this.appOptions = new AppOption();
 
@@ -57,14 +59,20 @@ function App(config) {
   this.restore().then();
 }
 
-App.prototype = PDFViewerApplication;
+App.prototype = Object.create(PDFViewerApplication);
 
 /**
  * Activate the current pdfviewer instance
  * @returns {App} Returns the current pdfviewer instance
  */
 App.prototype.restore = async function () {
+  if (this._disposed) {
+    return this;
+  }
   if (this.isActive()) {
+    if (!this.initialized) {
+      await this.initializedPromise;
+    }
     return this;
   }
 
@@ -80,8 +88,11 @@ App.prototype.restore = async function () {
   this.appConfig.appContainer.focus();
 
   // wait for pdfviewer to be initialized
-  if (!this.eventBus) {
+  if (!this.initialized) {
     await this.initializedPromise;
+  }
+  if (!this.isActive()) {
+    return this;
   }
 
   // Rebinder events for current instance
@@ -113,7 +124,7 @@ App.prototype.freeze = function () {
   App.ACTIVE_INSTANCE = null;
 
   this.bindAutoRestore();
-  this.eventBus.dispatch("pdfjs:frozen", {
+  this.eventBus?.dispatch("pdfjs:frozen", {
     instance: this,
   });
 };
@@ -121,21 +132,24 @@ App.prototype.freeze = function () {
  * @returns {boolean} check if current instance is active
  */
 App.prototype.isActive = function () {
-  return App.ACTIVE_INSTANCE === this.signature;
+  return !this._disposed && App.ACTIVE_INSTANCE === this.signature;
 };
 
 /**
  * Add Event listener to auto activate pdfviewer instance when pointer moves in
  */
 App.prototype.bindAutoRestore = function () {
+  if (this._disposed || this._restore_listener) {
+    return;
+  }
   this._restore_listener = () => {
     if (this.isActive()) {
       return;
     }
-    this.restore();
+    this.restore().catch(console.error);
   };
 
-  this._restore_listener = this.appConfig.documentRootElement.addEventListener(
+  this.appConfig.documentRootElement.addEventListener(
     "pointerover",
     this._restore_listener,
     true
@@ -156,6 +170,66 @@ App.prototype.unbindAutoRestore = function () {
     true
   );
   this._restore_listener = null;
+};
+
+App.prototype.dispose = function () {
+  if (this._disposal) {
+    return this._disposal;
+  }
+  this._disposed = true;
+  this._initializedCapability.resolve();
+  delete App.INSTANCES[this.signature];
+  if (App.ACTIVE_INSTANCE === this.signature) {
+    App.ACTIVE_INSTANCE = null;
+  }
+  if (APP() === this) {
+    setActiveAppInstance(null);
+    PDFViewer.setDocStyle(document.documentElement.style);
+  }
+
+  this._disposal = Promise.resolve().then(async () => {
+    this.unbindAutoRestore();
+    if (this._boundEvents.windowResize) {
+      this.unbindWindowEvents();
+    }
+    if (this._boundEvents.beforePrint) {
+      this.unbindEvents();
+    }
+
+    // Release only components created by this App, including after a failed init.
+    const {
+      pdfDocument, pdfLoadingTask, pdfViewer, pdfThumbnailViewer,
+      pdfRenderingQueue, pdfLinkService, pdfDocumentProperties, pdfScriptingManager,
+    } = { ...this };
+    if (pdfRenderingQueue) {
+      clearTimeout(pdfRenderingQueue.idleTimeout);
+      pdfRenderingQueue.idleTimeout = null;
+      pdfRenderingQueue.onIdle = null;
+    }
+    try {
+      pdfViewer?.destroy();
+    } finally {
+      try {
+        pdfThumbnailViewer?.destroy();
+      } finally {
+        this.pdfDocument = this.pdfLoadingTask = null;
+        const storage = pdfDocument?.annotationStorage;
+        if (storage) {
+          if (this._annotationStorageModified) {
+            storage.onResetModified?.();
+          }
+          storage.onSetModified = storage.onResetModified = storage.onAnnotationEditor = null;
+        }
+        pdfLinkService?.setDocument(null);
+        pdfDocumentProperties?.setDocument(null);
+        await Promise.all([
+          pdfScriptingManager?.destroyPromise,
+          pdfLoadingTask?.destroy(),
+        ]);
+      }
+    }
+  });
+  return this._disposal;
 };
 
 /**

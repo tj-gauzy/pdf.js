@@ -3330,9 +3330,10 @@ const PDFPrintServiceFactory = {
 };
 
 /* Support for multiple instances of the viewer on a single page. */
+const defaultApp = PDFViewerApplication;
 const setActiveAppInstance = instance => {
-  PDFViewerApplication = instance;
-  AppOptions = instance.appOptions;
+  PDFViewerApplication = instance || defaultApp;
+  AppOptions = instance?.appOptions ?? AppOptionsOrigin;
 };
 
 /* Get current active PDF viewer instance */

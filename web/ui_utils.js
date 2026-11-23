@@ -231,6 +231,11 @@ function watchScroll(viewAreaElement, callback, options = {}) {
     lastX: viewAreaElement.scrollLeft,
     lastY: viewAreaElement.scrollTop,
     _eventHandler: debounceScroll,
+    destroy() {
+      viewAreaElement.removeEventListener("scroll", debounceScroll, true);
+      window.cancelAnimationFrame(rAF);
+      clearTimeout(fastScrollDelayUpdater);
+    },
   };
 
   let rAF = null;

@@ -229,6 +229,8 @@ class PDFViewer {
 
   #scrollModePageState = null;
 
+  #onThumbnailRendered;
+
   #onVisibilityChange = null;
 
   #scaleTimeoutId = null;
@@ -320,12 +322,25 @@ class PDFViewer {
 
     // Trigger API-cleanup, once thumbnail rendering has finished,
     // if the relevant pageView is *not* cached in the buffer.
-    this.eventBus._on("thumbnailrendered", ({ pageNumber, pdfPage }) => {
+    this.#onThumbnailRendered = ({ pageNumber, pdfPage }) => {
       const pageView = this._pages[pageNumber - 1];
       if (!this.#buffer.has(pageView)) {
         pdfPage?.cleanup();
       }
-    });
+    };
+    this.eventBus._on("thumbnailrendered", this.#onThumbnailRendered);
+  }
+
+  destroy() {
+    this.#resizeObserver.disconnect();
+    this.scroll.destroy();
+    this.eventBus._off("thumbnailrendered", this.#onThumbnailRendered);
+    clearTimeout(this.#scaleTimeoutId);
+    this.#scaleTimeoutId = null;
+    for (const pageView of this._pages) {
+      pageView.destroy();
+    }
+    this.setDocument(null);
   }
 
   get pagesCount() {
@@ -938,6 +953,9 @@ class PDFViewer {
         // starts to create the correct size canvas. Wait until one page is
         // rendered so we don't tie up too many resources early on.
         this.#onePageRenderedOrForceFetch().then(async () => {
+          if (pdfDocument !== this.pdfDocument) {
+            return;
+          }
           this.findController?.setDocument(pdfDocument); // Enable searching.
           this._scriptingManager?.setDocument(pdfDocument); // Enable scripting.
 
@@ -974,8 +992,14 @@ class PDFViewer {
             return;
           }
           for (let pageNum = 2; pageNum <= pagesCount; ++pageNum) {
+            if (pdfDocument !== this.pdfDocument) {
+              return;
+            }
             const promise = pdfDocument.getPage(pageNum).then(
               pdfPage => {
+                if (pdfDocument !== this.pdfDocument) {
+                  return;
+                }
                 const pageView = this._pages[pageNum - 1];
                 if (!pageView.pdfPage) {
                   pageView.setPdfPage(pdfPage);
@@ -986,6 +1010,9 @@ class PDFViewer {
                 }
               },
               reason => {
+                if (pdfDocument !== this.pdfDocument) {
+                  return;
+                }
                 console.error(
                   `Unable to get page ${pageNum} to initialize viewer`,
                   reason
@@ -1018,6 +1045,9 @@ class PDFViewer {
         }
       })
       .catch(reason => {
+        if (pdfDocument !== this.pdfDocument) {
+          return;
+        }
         console.error("Unable to initialize viewer", reason);
 
         this._pagesCapability.reject(reason);

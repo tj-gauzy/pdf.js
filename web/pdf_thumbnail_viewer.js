@@ -72,6 +72,11 @@ class PDFThumbnailViewer {
     this._resetView();
   }
 
+  destroy() {
+    this.scroll.destroy();
+    this.setDocument(null);
+  }
+
   /**
    * @private
    */
@@ -197,6 +202,9 @@ class PDFThumbnailViewer {
 
     firstPagePromise
       .then(firstPdfPage => {
+        if (pdfDocument !== this.pdfDocument) {
+          return;
+        }
         const pagesCount = pdfDocument.numPages;
         const viewport = firstPdfPage.getViewport({ scale: 1 });
 
